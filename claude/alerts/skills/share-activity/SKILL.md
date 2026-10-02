@@ -59,3 +59,15 @@ from the actual tool list, use reply_hook_configuration or build-alert-route.py,
 then install the matching companion and run its native probe. No model-authored
 fake hook receipts, timers or activity reminders. Routing repair does not prove
 host support. Hooks-only sending skips Codex queue and cannot wake an idle chat.
+
+Native identity may be an opaque session ID or, if missing, the resolved
+transcript_path from the host hook. The connector hashes opaque identifiers
+and transcript paths without reading any transcript. Run the native probe,
+then inspect native_identity_source, identity_resolved and session_id_problem.
+Empty or unresolved values never fabricate a binding. If both fields are
+unavailable, report that limitation. No manual model call to reply_hook.
+
+Claude sends now default to auto, choosing one Codex delivery path. Explicit
+delivery_mode values are auto, hook_only and queue. A successful queue send has
+no duplicate hook copy. Queue acceptance still requires acknowledgement/reply
+to confirm receipt; uncertain sends are saved without automatic retries.

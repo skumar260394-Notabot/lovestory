@@ -205,3 +205,19 @@ from the actual tool list, use reply_hook_configuration or build-alert-route.py,
 then install the matching companion and run its native probe. No model-authored
 fake hook receipts, timers or activity reminders. Routing repair does not prove
 host support. Hooks-only sending skips Codex queue and cannot wake an idle chat.
+
+## Single-path delivery and native alert identity
+
+Claude sends default to auto: exact-thread hooks observed active within two
+minutes, otherwise the chat queue. A queue body is never also put in the hook
+inbox. Explicit delivery_mode values are auto, hook_only and queue. config.json
+can set codex_delivery_mode and codex_active_hook_window_ms (default 120000).
+An uncertain queue attempt remains in call_status without automatic resend;
+check acknowledgement/reply before retrying. Old queued messages are not cancelled.
+
+Opaque native session IDs are hashed to safe binding keys. A resolved native
+transcript_path can identify the chat when session_id is unavailable; the file
+is never read. Both require the setup probe in the selected Claude chat.
+session_id_problem and identity_source distinguish invalid placeholders and
+native identity sources without raw identifiers or tool arguments. If neither
+field resolves, report the blocker; never fake a receipt or substitute activity IDs.

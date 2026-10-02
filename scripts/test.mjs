@@ -16,6 +16,7 @@ const scripts = [
   'plugins/claude-codex-live-bridge/bridge/selftest-reciprocal.mjs',
   'plugins/claude-codex-live-bridge/bridge/selftest-setup.mjs',
   'tests/reply-notifications.mjs',
+  'tests/single-delivery.mjs',
   'tests/local-review.mjs',
 ];
 // Setting a temp home must prevent reads of personal Codex sessions or queues.

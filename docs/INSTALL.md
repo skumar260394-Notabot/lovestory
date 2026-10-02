@@ -51,11 +51,33 @@ and [cloud/device architecture](https://support.claude.com/en/articles/14479288-
 
 ### Sending to an active Codex chat
 
-`call_codex` and `reply_to_codex` accept `delivery_mode: "hook_only"` to persist
-the message without invoking `codex queue`. The exact destination's trusted
-hooks or an explicit inbox read must claim it. It cannot wake an idle chat;
-default `queue` retains idle wake capability and can require steering while
-Codex is busy. Neither selection proves delivery without acknowledgement/reply.
+`call_codex` and `reply_to_codex` default to `delivery_mode: "auto"`, even if a
+running host still shows an older tool schema. A lifecycle hook from the exact
+target thread within the last two minutes selects the hook inbox, unless its
+latest lifecycle event is Stop, SessionEnd or Interrupt. Otherwise the message
+goes to the chat queue. Queue messages are never also published to the hook
+inbox, including when a hook fires during the queue command.
+
+`hook_only` never starts a queue turn and cannot wake an idle chat. `queue`
+selects queue delivery even for an active thread. In `~/.codex-claude-live/config.json`,
+`codex_delivery_mode` changes the default and `codex_active_hook_window_ms`
+changes the freshness window (1000–600000 milliseconds; default 120000).
+Queue acceptance is not model receipt. If submission is uncertain, inspect
+call_status and confirm receipt before retrying; no duplicate fallback is sent.
+If the queue cannot be started, an unsent message can fall back to the hook
+inbox. Previously queued messages are not cancelled by this update.
+
+### Native alert identity
+
+The native setup probe binds the actual host identity to the explicitly chosen
+call. Opaque session IDs are hashed to safe keys; legacy simple IDs stay stable.
+If the host omits a session ID, a resolved absolute transcript_path can supply
+a per-session identity. The bridge hashes the path without reading the file.
+Empty values and literal placeholders never create bindings. Setup diagnostics
+report identity source, type, length and failure category, without retaining raw
+opaque IDs, transcript paths or tool arguments. If neither field resolves,
+alerts remain unavailable; do not substitute an activity ID or call reply_hook
+from the model to manufacture a receipt.
 
 ### Finding a Claude review
 

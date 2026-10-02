@@ -28,10 +28,10 @@ import {
 } from './protocol.mjs';
 
 const endpoint = 'channel:desktop';
-const DELIVERY_MODE = {type:'string', enum:['queue','hook_only'], description:'Default queue can wake an idle Codex chat, but busy chats may need steering. hook_only skips the queue wake and waits for the exact target\'s trusted hooks or inbox read; cannot wake idle chats.'};
+const DELIVERY_MODE = {type:'string', enum:['auto','queue','hook_only'], description:'Default auto chooses one delivery path: recently active exact-thread hooks, otherwise the chat queue. hook_only never queues a chat turn; queue never publishes a duplicate hook message.'};
 function sendOptions(args) {
-  if (args.delivery_mode != null && !['queue', 'hook_only'].includes(args.delivery_mode)) throw new Error('delivery_mode must be queue or hook_only.');
-  return {wake: args.delivery_mode !== 'hook_only'};
+  if (args.delivery_mode != null && !['auto', 'queue', 'hook_only'].includes(args.delivery_mode)) throw new Error('delivery_mode must be auto, queue, or hook_only.');
+  return {delivery_mode: args.delivery_mode};
 }
 
 function selectedProject(args, required = true) {
@@ -170,14 +170,17 @@ function describeSend(root, call, turn) {
     message_id: turn.message_id, turn: turn.turn, max_turns: call.max_turns,
     turns_remaining: call.max_turns - turn.turn, state: call.state, to: turn.to,
     queued: turn.delivery?.queued === true,
+    delivery_route: turn.delivery?.route,
     delivered_at: turn.delivered_at,
     acked_at: turn.acked_at,
     codex_hook_observed: hook.observed,
     wake: wake ?? { path: 'none', attempted: false, ok: false, detail: 'Target is not a Codex thread; no wake needed.' },
     delivery_note: wake?.ok
-      ? `Codex accepted the queue submission. This does not confirm the model saw it. ${hook.observed ? 'A hook has run for this thread; check call_status for actual hook delivery or acknowledgement.' : 'No Codex hook has run for this thread in this project.'}`
+      ? 'Codex accepted the queue submission. This does not confirm the model saw it. No duplicate was published to the hook inbox; acknowledgement or a reply confirms receipt.'
       : wake && wake.attempted
-        ? `codex queue failed (${wake.detail}). The message is still queued and Codex will pick it up at its next hook event, which only happens once Codex does something.`
+        ? wake.submission_uncertain
+          ? 'Queue submission is uncertain. The message is saved in call_status; no second copy was published or retried. Confirm receipt before retrying.'
+          : `codex queue failed (${wake.detail}). The message waits in the hook inbox.`
         : wake?.path === 'codex_hook'
           ? wake.detail
         : wake

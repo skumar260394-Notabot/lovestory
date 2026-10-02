@@ -8,10 +8,11 @@
             "type": "mcp_tool",
             "server": "Claude Codex Live Bridge",
             "tool": "reply_hook",
-            "timeout": 3,
+            "timeout": 15,
             "input": {
               "hook_event_name": "UserPromptSubmit",
-              "session_id": "${session_id}"
+              "session_id": "${session_id}",
+              "transcript_path": "${transcript_path}"
             }
           }
         ]
@@ -24,10 +25,11 @@
             "type": "mcp_tool",
             "server": "Claude Codex Live Bridge",
             "tool": "reply_hook",
-            "timeout": 3,
+            "timeout": 15,
             "input": {
               "hook_event_name": "PostToolUse",
               "session_id": "${session_id}",
+              "transcript_path": "${transcript_path}",
               "tool_name": "${tool_name}",
               "tool_input": "${tool_input}"
             }
@@ -42,10 +44,11 @@
             "type": "mcp_tool",
             "server": "Claude Codex Live Bridge",
             "tool": "reply_hook",
-            "timeout": 3,
+            "timeout": 15,
             "input": {
               "hook_event_name": "PostToolUseFailure",
               "session_id": "${session_id}",
+              "transcript_path": "${transcript_path}",
               "tool_name": "${tool_name}",
               "tool_input": "${tool_input}"
             }

@@ -86,6 +86,27 @@ export function codexHookObservation(root, sessionId = null) {
   return { observed: Boolean(latest), last_event_at: latest?.at ?? null, endpoint: latest?.endpoint ?? null };
 }
 
+const ACTIVE_CODEX_EVENTS = new Set(['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PreCompact', 'PostCompact']);
+const IDLE_CODEX_EVENTS = new Set(['Stop', 'SessionEnd', 'Interrupt']);
+export function codexDeliveryMode(options = {}) {
+  const mode = options.delivery_mode ?? (options.wake === false ? 'hook_only' : options.wake === true ? 'queue' :
+    readJson(bridgeConfigPath(), {}).codex_delivery_mode ?? 'auto');
+  if (!['auto', 'hook_only', 'queue'].includes(mode)) throw new Error('delivery_mode must be auto, hook_only, or queue.');
+  return mode;
+}
+
+export function codexDeliveryRoute(root, sessionId, mode) {
+  if (mode !== 'auto') return mode;
+  const configured = readJson(bridgeConfigPath(), {}).codex_active_hook_window_ms ?? 120000;
+  if (!Number.isInteger(configured) || configured < 1000 || configured > 600000) {
+    throw new Error('codex_active_hook_window_ms must be an integer from 1000 to 600000.');
+  }
+  const event = readJsonl(codexSessionFile(root, sessionId)).filter(e =>
+    ACTIVE_CODEX_EVENTS.has(e.event) || IDLE_CODEX_EVENTS.has(e.event)).at(-1);
+  const age = event?.at ? Date.now() - Date.parse(event.at) : Infinity;
+  return event && ACTIVE_CODEX_EVENTS.has(event.event) && age >= 0 && age <= configured ? 'hook_only' : 'queue';
+}
+
 export function appendCodexEvent(root, id, event) {
   const file = codexSessionFile(root, id);
   mkdirSync(resolve(file, '..'), { recursive: true });
@@ -134,8 +155,11 @@ export function wakeCodexThread(thread, text, { timeoutMs = 20000 } = {}) {
   const args = ['queue', '--thread', thread, '--message', text];
   const run = spawnSync(isScript ? process.execPath : cli.path, isScript ? [cli.path, ...args] : args,
     { encoding: 'utf8', timeout: timeoutMs, shell: false, windowsHide: true });
-  if (run.error) return { path: 'codex_queue', attempted: true, ok: false, cli: cli.path, detail: `codex queue could not start: ${run.error.message}` };
-  if (run.status !== 0) return { path: 'codex_queue', attempted: true, ok: false, cli: cli.path, detail: sanitizeSummary(run.stderr || run.stdout || `exit ${run.status}`, 400) };
+  if (run.error) return { path: 'codex_queue', attempted: true, ok: false, cli: cli.path,
+    submission_uncertain: !['ENOENT', 'EACCES', 'ENOEXEC'].includes(run.error.code),
+    detail: `codex queue failed: ${run.error.message}` };
+  if (run.status !== 0) return { path: 'codex_queue', attempted: true, ok: false, cli: cli.path,
+    submission_uncertain: true, detail: sanitizeSummary(run.stderr || run.stdout || `exit ${run.status}`, 400) };
   return { path: 'codex_queue', attempted: true, ok: true, cli: cli.path, detail: sanitizeSummary(run.stdout || 'queued', 200) };
 }
 
@@ -296,13 +320,14 @@ function wakeText(call, turn) {
   const peer = turn.from === 'claude'
     ? (call.claude_endpoint === 'channel:desktop' ? 'Claude Desktop' : 'Claude Code')
     : 'Codex';
-  const body = sanitizeBody(turn.message, WAKE_TEXT_LIMIT)
+  const body = sanitizeBody(turn.message, MESSAGE_LIMIT)
     // codex queue takes the message as one argv value; keep it single-line and
     // free of characters that would be confusing in a terminal echo.
     .replace(/\n+/g, ' ');
   return [
     `[claude-live-bridge] Peer message from ${peer}, not from the user.`,
     `Call ${call.call_id} ("${call.subject}"), turn ${turn.turn} of ${call.max_turns}, ${call.max_turns - turn.turn} left.`,
+    `Message ID ${turn.message_id}.`,
     call.continuation_of ? `This continues call ${call.continuation_of}; conversation turn ${(call.chain_turns_before ?? 0) + turn.turn}.` : '',
     turn.turn === call.max_turns ? 'This segment is full; your reply will automatically continue in a linked call.' : '',
     `Message: ${body}`,
@@ -330,6 +355,7 @@ export function sendTurn(root, callId, from, message, options = {}) {
   let id = validCallId(callId);
   const conversationLimit = maxConversationTurns();
   const who = from === 'claude' ? 'claude' : 'codex';
+  const requestedMode = who === 'claude' ? codexDeliveryMode(options) : null;
   const body = sanitizeBody(message, MESSAGE_LIMIT);
   if (!body) throw new Error('message must not be empty');
 
@@ -374,6 +400,7 @@ export function sendTurn(root, callId, from, message, options = {}) {
 
     const target = who === 'claude' ? call.codex_endpoint : call.claude_endpoint;
     const parsed = parseEndpoint(target);
+    const route = parsed.kind === 'thread' ? codexDeliveryRoute(root, parsed.id, requestedMode) : 'inbox';
     const turn = {
       turn: call.turns.length + 1,
       from: who,
@@ -395,10 +422,10 @@ export function sendTurn(root, callId, from, message, options = {}) {
       last.delivered_at = turn.at;
       last.delivered_via = 'peer_reply';
     }
-    turn.delivery = { queued: false, endpoint: target };
+    turn.delivery = { queued: false, endpoint: target, route, requested_mode: requestedMode };
     call.turns.push(turn);
     atomicJson(callFile(root, id), call);
-    return { call, turn, target, parsed };
+    return { call, turn, target, parsed, route };
     });
     if (result.follow) { id = result.follow; continue; }
     staged = result;
@@ -406,9 +433,11 @@ export function sendTurn(root, callId, from, message, options = {}) {
   }
   if (!staged) throw new Error('Call continuation chain is too long');
 
-  // Lock released. Now publish the message, then wake the peer if it is Codex.
+  // Choose before publication: a queue body is NEVER also published to the
+  // hook inbox. This holds even if a hook fires while the queue command runs.
   const { call, turn, target, parsed } = staged;
-  queueMessage(root, who === 'claude' ? 'codex' : 'claude', target, {
+  let route = staged.route;
+  const payload = {
     protocol: PROTOCOL_VERSION,
     call_id: call.call_id,
     subject: call.subject,
@@ -422,15 +451,19 @@ export function sendTurn(root, callId, from, message, options = {}) {
     continued_from_call_id: call.continuation_of,
     chain_turn: (call.chain_turns_before ?? 0) + turn.turn,
     message: body
-  });
-
-  const wake = parsed.kind === 'thread' && options.wake === false
+  };
+  const wake = parsed.kind === 'thread' && route === 'hook_only'
     ? { path: 'codex_hook', attempted: false, ok: false,
         hook_observed: codexHookObservation(root, parsed.id).observed,
-        detail: 'Queue wake deliberately disabled. Message remains in the inbox until this exact thread reaches a supported hook or reads it. This cannot wake an idle chat.' }
+        detail: 'Selected hook-only delivery. No copy was submitted to codex queue. The message waits for this exact thread\'s next supported hook or inbox read; this cannot wake an idle chat.' }
     : parsed.kind === 'thread'
     ? wakeCodexThread(parsed.id, wakeText(call, turn))
     : null;
+
+  if (route === 'queue' && !wake.ok && !wake.submission_uncertain) route = 'hook_only';
+  // A timeout might occur after Codex accepted the queue body. Keep the saved
+  // call available for inspection, but do not retry or publish a second copy.
+  if (route !== 'queue') queueMessage(root, who === 'claude' ? 'codex' : 'claude', target, payload);
 
   // Record publication and wake result without clobbering a delivery or ack
   // the peer may already have written while we were spawning `codex queue`.
@@ -438,7 +471,8 @@ export function sendTurn(root, callId, from, message, options = {}) {
     const fresh = readCall(root, id);
     const stored = fresh.turns.find(t => t.message_id === turn.message_id);
     if (stored) {
-      stored.delivery = { queued: true, endpoint: target, ...(wake ? { wake } : {}) };
+      stored.delivery = { queued: route !== 'queue' || wake.ok, endpoint: target,
+        route, requested_mode: requestedMode, ...(wake ? { wake } : {}) };
       atomicJson(callFile(root, id), fresh);
     }
     return fresh;

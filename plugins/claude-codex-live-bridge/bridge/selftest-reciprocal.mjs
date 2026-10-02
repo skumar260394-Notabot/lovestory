@@ -205,7 +205,8 @@ try {
     /No matching turn to acknowledge/);
   ok('ack is separate from delivery, costs no turn, and cannot self-ack');
 
-  // --- 5. Claude -> Codex, waking the thread ------------------------------
+  // --- 5. Claude -> an active Codex thread: hook only ---------------------
+  codexHook('PreToolUse', CODEX_THREAD);
   await sleep(1100); // respect the per-call rate limit
   const reply = await channel.call('reply_to_codex', {
     call_id: outbound.call_id, message: 'Agreed: per call. I will cap it at 20 and close on exhaustion.'
@@ -213,18 +214,14 @@ try {
   assert.equal(reply.turn, 2);
   assert.equal(reply.queued, true);
   assert.equal(reply.delivered_at, null, 'queue submission is not model-visible delivery');
-  assert.match(reply.delivery_note, /does not confirm the model saw it/);
-  const argv = await waitFor(() => stubCalls()[0], { label: 'codex queue invocation' });
-  assert.deepEqual(argv.slice(0, 4), ['queue', '--thread', CODEX_THREAD, '--message']);
-  assert.match(argv[4], /Peer message from Claude Code, not from the user/);
-  assert.match(argv[4], /Agreed: per call/);
-  assert.match(argv[4], /use your own judgement/);
-  assert.equal(argv.length, 5, 'the message must be one argv value, never shell-split');
-  assert.equal(reply.wake.ok, true);
+  assert.equal(reply.delivery_route, 'hook_only');
+  assert.equal(reply.wake.path, 'codex_hook');
+  assert.equal(reply.wake.attempted, false);
+  assert.equal(stubCalls().length, 0, 'active delivery must not queue a duplicate chat turn');
   const pendingReply = await codex.call('call_status', { project_path: project, call_id: outbound.call_id });
   assert.equal(pendingReply.turns[1].delivered_at, null);
   assert.equal(pendingReply.codex_reachability.hook_observed, true);
-  ok('Claude -> Codex invokes codex queue with the message as a single argv value');
+  ok('Claude -> active Codex uses the hook without a duplicate queue submission');
 
   // --- 6. the Codex hook injects it as model-visible context --------------
   const injected = await codex.call('codex_hook_event', { project_path: project,

@@ -18,7 +18,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { projectDir, projectRoot, sanitizeSummary } from './common.mjs';
 import {
-  DEFAULT_CHANNEL_ID, DEFAULT_MAX_TURNS, MAX_OPEN_CALLS, MAX_TURNS_LIMIT, PROTOCOL_VERSION, bridgeConfigPath, maxConversationTurns,
+  DEFAULT_CHANNEL_ID, DEFAULT_MAX_TURNS, MAX_OPEN_CALLS, MAX_TURNS_LIMIT, PROTOCOL_VERSION, bridgeConfigPath, maxConversationTurns, codexDeliveryMode,
   ackTurn, callStatus, callsForEndpoint, closeCall, codexHookObservation, listCalls, openCall, parseEndpoint, readCall,
   readJsonl, registerChannel, resolveCodexCli, resolveCodexEndpoint, sendTurn, takeInbox,
   unregisterChannel, codexSessionFile
@@ -27,6 +27,7 @@ import {
 const root = projectRoot(process.env.CLAUDE_BRIDGE_PROJECT || process.argv[2] || process.cwd());
 const channelId = (process.env.CLAUDE_BRIDGE_CHANNEL_ID || DEFAULT_CHANNEL_ID).replace(/[^A-Za-z0-9_-]/g, '') || DEFAULT_CHANNEL_ID;
 const endpoint = `channel:${channelId}`;
+const DELIVERY_MODE = {type:'string',enum:['auto','queue','hook_only'],description:'Default auto selects recently active exact-thread hooks, otherwise the queue. Each message uses one path. hook_only cannot wake an idle chat.'};
 const pollMs = Math.max(200, Math.min(10000, Number(process.env.CLAUDE_BRIDGE_POLL_MS ?? 750) || 750));
 
 const INSTRUCTIONS = [
@@ -120,14 +121,19 @@ function describeSend(call, turn) {
     message_id: turn.message_id, turn: turn.turn, max_turns: call.max_turns,
     turns_remaining: call.max_turns - turn.turn, state: call.state, to: turn.to,
     queued: turn.delivery?.queued === true,
+    delivery_route: turn.delivery?.route,
     delivered_at: turn.delivered_at,
     acked_at: turn.acked_at,
     codex_hook_observed: hook.observed,
     wake: wake ?? { path: 'none', attempted: false, ok: false, detail: 'Target is not a Codex thread; no wake needed.' },
     delivery_note: wake?.ok
-      ? `Codex accepted the queue submission. This does not confirm the model saw it. ${hook.observed ? 'A hook has run for this thread; check call_status for actual hook delivery or acknowledgement.' : 'No Codex hook has run for this thread in this project.'}`
+      ? 'Codex accepted the queue submission. This does not confirm the model saw it. No duplicate was published to the hook inbox; acknowledgement or a reply confirms receipt.'
       : wake && wake.attempted
-        ? `codex queue failed (${wake.detail}). The message is still queued and Codex will pick it up at its next hook event, which only happens once Codex does something.`
+        ? wake.submission_uncertain
+          ? 'Queue submission is uncertain. The message is saved in call_status; no second copy was published or retried. Confirm receipt before retrying.'
+          : `codex queue failed (${wake.detail}). The message waits in the hook inbox.`
+        : wake?.path === 'codex_hook'
+          ? wake.detail
         : wake
           ? `No codex queue available (${wake.detail}). The message waits in the inbox for the Codex hook.`
           : 'Queued for the target endpoint.'
@@ -135,6 +141,7 @@ function describeSend(call, turn) {
 }
 
 function callCodex(args) {
+  const options = {delivery_mode: codexDeliveryMode({delivery_mode: args.delivery_mode})};
   const codex = resolveCodexEndpoint(root, args.codex_endpoint ?? 'auto');
   const call = openCall(root, {
     subject: args.subject,
@@ -143,7 +150,7 @@ function callCodex(args) {
     codex_endpoint: codex.endpoint,
     max_turns: args.max_turns
   });
-  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message);
+  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message, options);
   return {
     ...describeSend(updated, turn),
     subject: updated.subject,
@@ -154,7 +161,7 @@ function callCodex(args) {
 
 function replyToCodex(args) {
   const call = readCall(root, args.call_id);
-  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message);
+  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message, {delivery_mode: args.delivery_mode});
   return describeSend(updated, turn);
 }
 
@@ -213,15 +220,16 @@ const tools = [
     inputSchema: { type: 'object', properties: {} } },
   { name: 'codex_activity', description: 'Read what Codex has been doing: tool calls, short action summaries, and final messages, after a cursor.',
     inputSchema: { type: 'object', properties: { codex_endpoint: { type: 'string', description: 'thread:<id>, or "auto" for the most recent Codex session' }, after_cursor: { type: 'integer' } } } },
-  { name: 'call_codex', description: 'Open a new call with Codex and send the first turn. Non-blocking: it submits to the Codex queue and hook inbox, then returns without proving model delivery.',
+  { name: 'call_codex', description: 'Open a new call with Codex and send the first turn through one selected path. Queue acceptance alone does not prove model delivery.',
     inputSchema: { type: 'object', properties: {
       subject: { type: 'string', description: 'Short topic label for the call' },
       message: { type: 'string', description: 'What you want to raise, in full' },
+      delivery_mode: DELIVERY_MODE,
       codex_endpoint: { type: 'string', description: 'thread:<id>, or "auto" for the most recent observed Codex session' },
       max_turns: { type: 'integer', description: `Turns per linked call segment (default ${DEFAULT_MAX_TURNS}, max ${MAX_TURNS_LIMIT}); a reply continues automatically when a segment fills.` }
     }, required: ['subject', 'message'] } },
   { name: 'reply_to_codex', description: 'Send the next turn. A full call segment continues automatically under a linked call ID; use the returned call_id for later replies.',
-    inputSchema: { type: 'object', properties: { call_id: { type: 'string' }, message: { type: 'string' } }, required: ['call_id', 'message'] } },
+    inputSchema: { type: 'object', properties: { call_id: { type: 'string' }, message: { type: 'string' }, delivery_mode: DELIVERY_MODE }, required: ['call_id', 'message'] } },
   { name: 'ack_call', description: 'Tell Codex you have seen a message but are not replying yet. Does not consume a turn.',
     inputSchema: { type: 'object', properties: { call_id: { type: 'string' }, message_id: { type: 'string' }, note: { type: 'string' } }, required: ['call_id'] } },
   { name: 'close_call', description: 'End a call so neither side sends more turns on it.',

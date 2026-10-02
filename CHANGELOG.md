@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — alert identity and single-path delivery
+
+- Accept opaque native hook session IDs with stable safe binding keys.
+- Allow the resolved transcript identity when the host omits session_id; never read transcripts.
+- Diagnose empty and unresolved hook identities without retaining raw values.
+- Default Claude sends to one path: recently active target hooks, otherwise the queue.
+- Queue bodies are never also injected by the hook inbox, including submission races.
+- Preserve uncertain queue sends in call records without an automatic duplicate retry.
+- Added 82 alert checks and 28 single-delivery checks. Native host proof remains required.
+
 ## 0.3.0-beta.6 — 2026-10-02
 
 - Private per-session channel config supports teams that track `.mcp.json`.
