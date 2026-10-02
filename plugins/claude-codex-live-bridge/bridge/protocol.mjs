@@ -424,7 +424,11 @@ export function sendTurn(root, callId, from, message, options = {}) {
     message: body
   });
 
-  const wake = parsed.kind === 'thread' && options.wake !== false
+  const wake = parsed.kind === 'thread' && options.wake === false
+    ? { path: 'codex_hook', attempted: false, ok: false,
+        hook_observed: codexHookObservation(root, parsed.id).observed,
+        detail: 'Queue wake deliberately disabled. Message remains in the inbox until this exact thread reaches a supported hook or reads it. This cannot wake an idle chat.' }
+    : parsed.kind === 'thread'
     ? wakeCodexThread(parsed.id, wakeText(call, turn))
     : null;
 

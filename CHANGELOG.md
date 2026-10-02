@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0-beta.6 — 2026-10-02
+
+- Private per-session channel config supports teams that track `.mcp.json`.
+- Verified non-Git folders connect without Git; repository markers remain protected.
+- Reply hook routes can be configured for a device-link namespace without guessing display names.
+- Added hooks-only sending to Codex as an explicit alternative to queue wake.
+- Missing review feeds explain their scope; they do not claim access to all Claude history.
+- Privacy scan covers more platforms. Regression counts distinguish Linux and Windows.
+- Native Desktop alert support still needs a probe and real acknowledgement after installation.
+
 ## 0.3.0-beta.5 — 2026-10-02
 
 - Canonicalize Windows short names and directory aliases before protecting

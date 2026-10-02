@@ -16,7 +16,7 @@ mkdirSync(root);
 const base = new URL('../claude/desktop-extension/server/', import.meta.url).href;
 const { openCall, sendTurn, ackTurn, callStatus, closeCall, takeInbox } = await import(base + 'protocol.mjs');
 const { atomicJson, projectDir } = await import(base + 'common.mjs');
-const { prepareReplyNotifications, replyNotificationStatus, replyHook, disableReplyNotifications } = await import(base + 'reply-notifications.mjs');
+const { prepareReplyNotifications, replyNotificationStatus, replyHook, disableReplyNotifications, replyHookConfiguration } = await import(base + 'reply-notifications.mjs');
 let checks = 0;
 function check(test, message) { assert.ok(test, message); checks++; }
 function call(max_turns=6) { return openCall(root, { subject: 'test', opened_by: 'codex', claude_endpoint: 'channel:desktop', codex_endpoint: 'thread:test', max_turns }); }
@@ -84,6 +84,7 @@ const efile=join(process.env.CODEX_BRIDGE_ACTIVITY_HOME,'reply-notifications',ke
 atomicJson(efile,{...JSON.parse(readFileSync(efile)),expires_at:'2020-01-01T00:00:00.000Z'});
 check(JSON.stringify(replyHook({...event,tool_input:{command:ep.probe_command}})) === '{}','expired probe silent');
 check(!replyNotificationStatus(eargs).hook_observed,'expired probe cannot bind');
+check(replyNotificationStatus(eargs).state==='probe_expired','expired probe is diagnosed separately');
 const renewed=prepareReplyNotifications({...eargs,retry_probe:true});
 check(renewed.probe_token !== ep.probe_token,'explicit retry renews same call');
 replyHook({...event,tool_input:{command:renewed.probe_command}});
@@ -95,4 +96,15 @@ assert.equal(wire.status,0,wire.stderr); checks++;
 const responses=wire.stdout.trim().split('\n').map(JSON.parse);
 check(responses[0].result.content.length === 0,'wire silence is empty MCP content, not an empty-context reminder');
 check(responses[1].result.tools.some(t=>t.name==='prepare_reply_notifications'),'setup tool exposed over actual MCP');
+check(responses[1].result.tools.some(t=>t.name==='reply_hook_configuration'),'route configuration exposed over actual MCP');
+const config = replyHookConfiguration({server:'remote-devices',tool:'Codex_Live_Bridge__reply_hook'});
+check(config.installed===false && config.transport_verified===false,'configuration is not fabricated installation/receipt');
+check(Object.values(config.hooks_config.hooks).every(groups=>groups[0].hooks[0].server==='remote-devices' && groups[0].hooks[0].tool==='Codex_Live_Bridge__reply_hook'),'verified namespaced route applied to every event');
+assert.throws(()=>replyHookConfiguration({server:'remote-devices',tool:'call_tool'}),/input_template/);checks++;
+const wrapped = replyHookConfiguration({server:'proxy',tool:'call_tool',input_template:{tool:'reply_hook',arguments:{session_id:'${session_id}'}}});
+check(wrapped.hooks_config.hooks.PostToolUse[0].hooks[0].input.arguments.session_id==='${session_id}','explicit wrapper input preserved');
+const onlyHook=call();
+const queued = sendTurn(root,onlyHook.call_id,'claude','hook-only route',{wake:false});
+check(queued.turn.delivery.wake.path==='codex_hook' && !queued.turn.delivery.wake.attempted && !queued.turn.delivery.wake.ok,'hook-only does not start a queue wake or claim receipt');
+check(takeInbox(root,'codex','thread:test','test-hook',onlyHook.call_id).length===1,'hook-only still persists a deliverable inbox message');
 console.log(JSON.stringify({checks,sandbox,passed:true,live_claude_delivery:'unverified'}));

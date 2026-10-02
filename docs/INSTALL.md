@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Windows, Node.js 22.13.0+ on PATH, an installed local Codex client, and Claude Desktop and/or Claude Code. Sign into the clients using your normal account. Git is needed for project setup and overlap checks. Python 3.9+ is a build prerequisite, not a runtime requirement for the bridge. Use matching release assets.
+Windows, Node.js 22.13.0+ on PATH, an installed local Codex client, and Claude Desktop and/or Claude Code. Sign into the clients using your normal account. Git is needed for setup inside repositories and overlap checks. Non-Git folders can connect without Git; repository markers are checked upward before allowing that fallback. Python 3.9+ is a build prerequisite, not a runtime requirement for the bridge. Use matching release assets.
 
 **Desktop-only use does not require Claude Code or a Claude CLI login.** The
 Desktop extension connects through the signed-in Claude app. Claude Code and
@@ -15,20 +15,60 @@ Setup writes per-machine project settings. In a Git repository it adds exact
 paths to the local `.git/info/exclude`, preserving the shared `.gitignore`.
 It refuses to modify a tracked `.mcp.json`, `.codex/hooks.json`, or
 `.claude/settings.local.json`. Keep tracked configuration portable; for a
-tracked Claude MCP config, Claude Code's `--scope local` stores that server in
-your user configuration instead. The bridge does not untrack files for you.
+tracked Claude MCP config, use `connect_project` with `channel_config: "private"`.
+The bridge writes a separate channel config in its per-project user store and
+returns a launch command using Claude Code's `--mcp-config` option. Use that
+command for this session; the tracked `.mcp.json` stays unchanged. Reconnection
+refreshes an existing private channel. The bridge does not untrack files or
+edit Claude's login configuration.
 
-The optional alert companion targets the Desktop connector named
-`Claude Codex Live Bridge`. It is not a Claude Code channel plugin: that
+The optional alert companion ships with the direct route
+`Claude Codex Live Bridge` / `reply_hook`. Verify that this is the host's
+configured server key, not just a display label. It is not a Claude Code channel plugin: that
 channel uses `claude-live-bridge` and its own live transport. Do not enable
 Desktop companion hooks globally in Claude Code or rename their server to
 match the channel. A missing connector must be reported, never treated as
 successful notification delivery.
 
+### Device-linked alert route
+
+Device-linked cloud tasks may expose local tools on `remote-devices` with a
+namespaced tool, for example `Codex_Live_Bridge__reply_hook`. The direct companion
+cannot resolve that route merely from the extension's display name. Obtain the
+exact server/tool and verify that its arguments match `reply_hook`; do not guess.
+Use the Desktop `reply_hook_configuration` tool to prepare matching hooks, or
+build a replacement companion with `scripts/build-alert-route.py --server
+remote-devices --tool Codex_Live_Bridge__reply_hook --output <destination.zip>`.
+The builder preserves the source companion's identity; install one route variant
+per intended host. Do not enable duplicate variants simultaneously. For the
+private companion, pass its existing source folder with `--source`.
+
+This corrects routing only. The host must still execute MCP tool hooks, and
+its native probe must record a receipt before alerts can be claimed working.
+Cloud tasks without the device connector need a remote MCP connection; this
+package does not provide one. See [Claude's hook fields](https://code.claude.com/docs/en/hooks#mcp-tool-hook-fields)
+and [cloud/device architecture](https://support.claude.com/en/articles/14479288-claude-cowork-architecture-overview).
+
+### Sending to an active Codex chat
+
+`call_codex` and `reply_to_codex` accept `delivery_mode: "hook_only"` to persist
+the message without invoking `codex queue`. The exact destination's trusted
+hooks or an explicit inbox read must claim it. It cannot wake an idle chat;
+default `queue` retains idle wake capability and can require steering while
+Codex is busy. Neither selection proves delivery without acknowledgement/reply.
+
+### Finding a Claude review
+
+`list_desktop_sessions` searches registered local activity feeds. It does not
+enumerate Claude's account, download chat history, or attach to an arbitrary
+cloud task by title. The selected review must access the connector and register
+an activity feed or send its findings through a call. A missing feed is reported
+explicitly; it does not prove the review does not exist.
+
 Add the repository marketplace:
 
 ```sh
-codex plugin marketplace add skumar260394-Notabot/claude-codex-live-bridge --ref v0.3.0-beta.5
+codex plugin marketplace add skumar260394-Notabot/claude-codex-live-bridge --ref v0.3.0-beta.6
 ```
 
 Install **Claude Codex Live Bridge** from that local source in the desktop Plugins Directory. Alternatively, clone the repository and add its local directory as a marketplace. Review and trust hooks using your client's hook controls (`/hooks` where available); restart/reload the session if required. No hook is proven active until a real event is observed.
@@ -37,13 +77,13 @@ The internal MCP server key is `claude-live-bridge`, retained for protocol compa
 
 ## Claude Desktop
 
-Download `claude-codex-live-bridge-desktop-0.3.0-beta.5.mcpb`. Use Settings → Extensions → Advanced settings → Install Extension. Select the MCPB; do not attach it to a conversation as a document. Enable claude-codex-live-bridge in the conversation's connector menu. Restart Claude if the app requests it or fails to load the server.
+Download `claude-codex-live-bridge-desktop-0.3.0-beta.6.mcpb`. Use Settings → Extensions → Advanced settings → Install Extension. Select the MCPB; do not attach it to a conversation as a document. Enable claude-codex-live-bridge in the conversation's connector menu. Restart Claude if the app requests it or fails to load the server.
 
 Ask Claude to list Codex chats with `codex_sessions`, choose the exact intended `thread:<id>`, and open a greeting-only `call_codex`. An optional absolute `project_path` verifies or filters the destination. No folder is guessed from a chat title. Read replies using `read_codex_messages` and the returned call ID.
 
 ### Optional experimental raised hands
 
-Upload `claude-codex-live-bridge-alerts-0.3.0-beta.5.zip` through Claude's plugin installation interface, then enable it. The host must support a direct `mcp_tool` hook into the already configured Desktop connector. The shipped server name `Claude Codex Live Bridge` must match the host's actual configured connector name. This transport is documented for Claude Code; Desktop/task-host support is unverified.
+Upload `claude-codex-live-bridge-alerts-0.3.0-beta.6.zip` through Claude's plugin installation interface, then enable it. The host must support a direct `mcp_tool` hook into the already configured Desktop connector. The shipped server name `Claude Codex Live Bridge` must match the host's actual configured connector name. This transport is documented for Claude Code; Desktop/task-host support is unverified.
 
 In the exact existing Claude chat, use `prepare_reply_notifications` for an explicitly selected open call. If a legacy activity subscription owns that call, supply its same `activity_session_id`. Run the returned harmless `probe_command` as an ordinary command in that chat, then inspect `reply_notification_status`. Do **not** call `reply_hook` from the model or fabricate a hook receipt. Renew an expired unbound probe with `retry_probe: true`.
 

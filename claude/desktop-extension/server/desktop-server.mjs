@@ -18,7 +18,7 @@ import { isAbsolute, join, win32 } from 'node:path';
 import { projectDir, projectRoot, sanitizeSummary } from './common.mjs';
 import { desktopActivityReadTools, desktopActivityWriteTools, registerDesktopActivity, reportDesktopActivity, captureDesktopHook, listDesktopActivity, watchDesktopActivity } from './desktop-activity.mjs';
 import { subscribeDesktopCall, subscribedDesktopMessages } from './desktop-delivery.mjs';
-import { replyNotificationTools, prepareReplyNotifications, replyNotificationStatus, disableReplyNotifications, replyHook } from './reply-notifications.mjs';
+import { replyNotificationTools, prepareReplyNotifications, replyNotificationStatus, disableReplyNotifications, replyHook, replyHookConfiguration } from './reply-notifications.mjs';
 import { readCodexChats } from './codex-sessions.mjs';
 import {
   DEFAULT_CHANNEL_ID, DEFAULT_MAX_TURNS, MAX_OPEN_CALLS, MAX_TURNS_LIMIT, PROTOCOL_VERSION,
@@ -28,6 +28,11 @@ import {
 } from './protocol.mjs';
 
 const endpoint = 'channel:desktop';
+const DELIVERY_MODE = {type:'string', enum:['queue','hook_only'], description:'Default queue can wake an idle Codex chat, but busy chats may need steering. hook_only skips the queue wake and waits for the exact target\'s trusted hooks or inbox read; cannot wake idle chats.'};
+function sendOptions(args) {
+  if (args.delivery_mode != null && !['queue', 'hook_only'].includes(args.delivery_mode)) throw new Error('delivery_mode must be queue or hook_only.');
+  return {wake: args.delivery_mode !== 'hook_only'};
+}
 
 function selectedProject(args, required = true) {
   if (!args?.project_path) {
@@ -57,7 +62,7 @@ const INSTRUCTIONS = [
   '',
   'Use codex_sessions and codex_activity to see what Codex is doing before raising something.',
   'Activity reporting is optional and separate from reply notifications. Do not call report_activity unless the user explicitly requests a report or enables continuing reporting. Stop recurring reports when the user disables them. Historical activity feeds remain available.',
-  'The reply-only companion 0.3.0-beta.5 uses reply_hook at UserPromptSubmit, PostToolUse and PostToolUseFailure. Set up an explicitly selected existing open call with prepare_reply_notifications, including the existing activity_session_id if this call already has an activity subscription. Run its returned harmless probe_command in THIS chat, then check reply_notification_status. Do not call reply_hook from the model, choose the newest session, or manufacture a receipt. Empty output means no pending peer context; it does not prove the host ran hooks. Only hook_observed in reply_notification_status proves this probe reached the connector; that is separate from the activity feed\'s hook_observed. The host must support MCP tool hooks for this connector: deployment remains unverified until the probe and a real pending-message test succeed. Unsupported hosts keep manual read_codex_messages. Alerts do not wake a fully idle chat, call a timer, or publish activity reports.'
+  'The reply-only companion 0.3.0-beta.6 uses reply_hook at UserPromptSubmit, PostToolUse and PostToolUseFailure. Set up an explicitly selected existing open call with prepare_reply_notifications, including the existing activity_session_id if this call already has an activity subscription. Run its returned harmless probe_command in THIS chat, then check reply_notification_status. Do not call reply_hook from the model, choose the newest session, or manufacture a receipt. Empty output means no pending peer context; it does not prove the host ran hooks. Only hook_observed in reply_notification_status proves this probe reached the connector; that is separate from the activity feed\'s hook_observed. The host must support MCP tool hooks for this connector: deployment remains unverified until the probe and a real pending-message test succeed. Unsupported hosts keep manual read_codex_messages. Alerts do not wake a fully idle chat, call a timer, or publish activity reports.'
 ].join('\n');
 
 /* --------------------------------------------------------------- plumbing */
@@ -173,6 +178,8 @@ function describeSend(root, call, turn) {
       ? `Codex accepted the queue submission. This does not confirm the model saw it. ${hook.observed ? 'A hook has run for this thread; check call_status for actual hook delivery or acknowledgement.' : 'No Codex hook has run for this thread in this project.'}`
       : wake && wake.attempted
         ? `codex queue failed (${wake.detail}). The message is still queued and Codex will pick it up at its next hook event, which only happens once Codex does something.`
+        : wake?.path === 'codex_hook'
+          ? wake.detail
         : wake
           ? `No codex queue available (${wake.detail}). The message waits in the inbox for the Codex hook.`
           : 'Queued for the target endpoint.'
@@ -180,6 +187,7 @@ function describeSend(root, call, turn) {
 }
 
 async function callCodex(args) {
+  const options = sendOptions(args);
   if (!args.codex_endpoint || args.codex_endpoint === 'auto') throw new Error('Choose an existing Codex chat from codex_sessions and pass its thread:<id> endpoint.');
   const listed = await codexSessions(args.project_path ? { project_path: args.project_path } : {});
   const selected = listed.codex_sessions.find(s => s.endpoint === args.codex_endpoint);
@@ -193,7 +201,7 @@ async function callCodex(args) {
     codex_endpoint: codex.endpoint,
     max_turns: args.max_turns
   });
-  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message);
+  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message, options);
   return {
     ...describeSend(root, updated, turn),
     project_path: root,
@@ -207,7 +215,7 @@ async function replyToCodex(args) {
   const root = await rootForCall(args);
   const call = readCall(root, args.call_id);
   if (call.claude_endpoint !== endpoint) throw new Error('This call belongs to a different Claude endpoint.');
-  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message);
+  const { call: updated, turn } = sendTurn(root, call.call_id, 'claude', args.message, sendOptions(args));
   return describeSend(root, updated, turn);
 }
 
@@ -297,11 +305,12 @@ const tools = [
       project_path: PROJECT,
       subject: { type: 'string', description: 'Short topic label for the call' },
       message: { type: 'string', description: 'What you want to raise, in full' },
+      delivery_mode: DELIVERY_MODE,
       codex_endpoint: { type: 'string', description: 'Required thread:<id> endpoint selected from codex_sessions.' },
       max_turns: { type: 'integer', description: `Turns per linked call segment (default ${DEFAULT_MAX_TURNS}, max ${MAX_TURNS_LIMIT}); a reply continues automatically when a segment fills.` }
     }, required: ['subject', 'message', 'codex_endpoint'] } },
   { name: 'reply_to_codex', description: 'Send the next turn. A full segment continues automatically under a linked call ID; use the returned call_id for later replies.',
-    inputSchema: { type: 'object', properties: { project_path: PROJECT, call_id: { type: 'string' }, message: { type: 'string' } }, required: ['call_id', 'message'] } },
+    inputSchema: { type: 'object', properties: { project_path: PROJECT, call_id: { type: 'string' }, message: { type: 'string' }, delivery_mode: DELIVERY_MODE }, required: ['call_id', 'message'] } },
   { name: 'ack_call', description: 'Acknowledge a message without consuming a turn. call_id finds its project.',
     inputSchema: { type: 'object', properties: { project_path: PROJECT, call_id: { type: 'string' }, message_id: { type: 'string' }, note: { type: 'string' } }, required: ['call_id'] } },
   { name: 'close_call', description: 'End a call. call_id finds its project.',
@@ -315,6 +324,7 @@ const tools = [
 const actions = {
   prepare_reply_notifications: async args => prepareReplyNotifications({ ...args, project_path: await rootForCall(args) }),
   reply_notification_status: async args => replyNotificationStatus({ ...args, project_path: await rootForCall(args) }),
+  reply_hook_configuration: replyHookConfiguration,
   disable_reply_notifications: async args => disableReplyNotifications({ ...args, project_path: await rootForCall(args) }),
   reply_hook: replyHook,
   list_desktop_sessions: listDesktopActivity,
@@ -353,7 +363,7 @@ for await (const line of lines) {
       result = {
         protocolVersion: request.params?.protocolVersion ?? '2025-06-18',
         capabilities: { tools: {} },
-        serverInfo: { name: 'codex-live-bridge', version: '0.3.0-beta.5' },
+        serverInfo: { name: 'codex-live-bridge', version: '0.3.0-beta.6' },
         instructions: INSTRUCTIONS
       };
     } else if (request.method === 'ping') result = {};

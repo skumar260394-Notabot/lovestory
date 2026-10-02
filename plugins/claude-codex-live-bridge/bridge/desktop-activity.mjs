@@ -111,7 +111,10 @@ export function listDesktopActivity(args = {}) {
       stale: !last || Date.now() - Date.parse(last.at) > 120000,
       note: 'last_status is the last recorded state, not proof the task is running now. Names and project folders are declared by Claude; activity IDs are not message-routing endpoints.' }];
   }).sort((a, b) => (b.last_event_at || '').localeCompare(a.last_event_at || '')).slice(0, 100);
-  return { sessions, project_required: false };
+  return { sessions, project_required: false,
+    discovery: { source: 'locally_registered_activity_feeds', conversation_history_access: false,
+      cloud_session_enumeration: false,
+      note: 'This does not enumerate all Claude chats or fetch their conversation history. A missing feed means this computer has no matching registration, not that the chat does not exist. The intended Claude chat must have access to this connector and explicitly register/report, or use a separately configured remote connector.' } };
 }
 
 export function watchDesktopActivity(args) {

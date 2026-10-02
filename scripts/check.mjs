@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { hasPersonalPath } from './privacy-patterns.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const json = path => JSON.parse(readFileSync(join(root, path), 'utf8'));
@@ -19,7 +20,7 @@ function walk(dir) {
     if (['auth.json', '.env'].includes(item.name) || /\.(log|tmp|pyc)$/.test(item.name)) failures.push(`${name}: private/runtime file`);
     const text = readFileSync(path, 'utf8');
     // Real user directories and complete secret values are forbidden; synthetic test text is allowed.
-    if (/[A-Z]:[\\/]+Users[\\/]+[A-Za-z0-9]/i.test(text) || /\/home\/[a-z][a-z0-9_-]*\//i.test(text)) failures.push(`${name}: personal absolute path`);
+    if (hasPersonalPath(text)) failures.push(`${name}: personal absolute path`);
     if (/gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:ant-)?[A-Za-z0-9_-]{20,}/.test(text)) failures.push(`${name}: credential-shaped value`);
     if (name.endsWith('.json')) { try { JSON.parse(text); } catch { failures.push(`${name}: invalid JSON`); } }
     if (name.endsWith('.mjs')) {

@@ -7,7 +7,7 @@ description: Configure reply-only Codex raised hands for this existing Claude ch
 
 This skill name is retained for update compatibility. The companion no longer
 asks Claude to publish reports or poll after each tool. Use desktop extension
-claude-codex-live-bridge 0.3.0-beta.5 or later.
+claude-codex-live-bridge 0.3.0-beta.6 or later.
 
 1. Retain this conversation and its explicitly selected open bridge call. Do
    not guess another chat, call, activity ID, or newest session.
@@ -41,3 +41,21 @@ The server name in hooks/hooks.json must match an already configured connector
 in the host. The shipped value is Claude Codex Live Bridge. If the host uses another
 name or ignores mcp_tool hooks, report the actual limitation instead of claiming
 push delivery. Do not add a duplicate MCP server merely to match a label.
+
+
+## Follow-up setup and route diagnostics
+
+When `.mcp.json` is tracked, use connect_project with channel_config="private"
+and the returned launch command. Shared files stay unchanged. Non-Git folders
+can connect without Git; repositories still require it.
+
+Activity lookup lists only locally registered feeds, not all Claude chats or
+their histories. An unregistered cloud review cannot be read by title through
+this connector. It must connect/register/send findings explicitly.
+
+Alert hooks use the host's exact configured server/tool route. Device-linked
+tasks may use remote-devices and a namespaced reply_hook alias. Obtain these
+from the actual tool list, use reply_hook_configuration or build-alert-route.py,
+then install the matching companion and run its native probe. No model-authored
+fake hook receipts, timers or activity reminders. Routing repair does not prove
+host support. Hooks-only sending skips Codex queue and cannot wake an idle chat.

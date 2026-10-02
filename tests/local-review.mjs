@@ -9,6 +9,7 @@ import { protectLocalConfigs } from '../plugins/claude-codex-live-bridge/bridge/
 import { checkCodexQueue } from '../plugins/claude-codex-live-bridge/bridge/codex-cli.mjs';
 import { prepareReplyNotifications } from '../claude/desktop-extension/server/reply-notifications.mjs';
 import { openCall } from '../plugins/claude-codex-live-bridge/bridge/protocol.mjs';
+import { hasPersonalPath } from '../scripts/privacy-patterns.mjs';
 
 const sandbox = mkdtempSync(join(tmpdir(), 'bridge-local-review-'));
 const home = join(sandbox, 'codex');
@@ -81,4 +82,21 @@ if(process.platform==='win32') {
   const cmd=spawnSync('cmd.exe',['/d','/s','/c',`"${probe.probe_command}"`],{encoding:'utf8',windowsHide:true,windowsVerbatimArguments:true,timeout:10000});
   check(cmd.status===0 && cmd.stdout.trim()===probe.probe_token,'same probe runs in Windows cmd');
 }
+const noGit = join(sandbox,'no-git-folder'); mkdirSync(noGit);
+const protectionModule = new URL('../plugins/claude-codex-live-bridge/bridge/local-config.mjs',import.meta.url).href;
+function withoutGit(root) {
+  return spawnSync(process.execPath,['--input-type=module','-e',
+    `import {protectLocalConfigs} from ${JSON.stringify(protectionModule)}; console.log(JSON.stringify(protectLocalConfigs(${JSON.stringify(root)},[])));`],
+    {encoding:'utf8',env:{...process.env,PATH:'',GIT_DIR:'',GIT_WORK_TREE:''}});
+}
+check(withoutGit(noGit).status===0,'no Git required for a verified non-Git folder');
+mkdirSync(join(noGit,'.git'));
+const below=join(noGit,'nested');mkdirSync(below);
+check(withoutGit(below).status!==0,'missing Git refuses a repository found upward');
+const gitFile=join(sandbox,'git-file');mkdirSync(gitFile);writeFileSync(join(gitFile,'.git'),'gitdir: elsewhere');
+check(withoutGit(gitFile).status!==0,'missing Git detects worktree/submodule .git files');
+for(const segments of [['','Users','sample','repo'],['','root','project'],['','home','sample','repo']]) {
+  check(hasPersonalPath(segments.join('/')),'privacy scan covers platform user paths');
+}
+check(!hasPersonalPath('https://example.com/docs/root-guide'),'ordinary documentation URL is allowed');
 console.log(`Local review regressions passed (${checks} checks). No live model calls.`);

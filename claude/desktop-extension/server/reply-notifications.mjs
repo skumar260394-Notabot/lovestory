@@ -26,7 +26,7 @@ function ownTool(args) {
   }
   return names.some(name => {
     const value = normalize(name);
-    return value.includes('claudecodexlivebridge') || value.includes('lovestory') || value.includes('codexlivebridge') || value.includes('claudelivebridge') ||
+    return value.includes('claudecodexlivebridge') || value.includes('codexlivebridge') || value.includes('claudelivebridge') ||
       [...bridgeNames].some(tool => value.endsWith(tool));
   });
 }
@@ -59,7 +59,12 @@ function describe(value) {
     call_id: value.call_id, project_path: value.project_path, enabled: value.enabled,
     hook_observed: Boolean(observed), native_session_id: observed?.session_id || null,
     hook_observed_at: observed?.at || null, activity_reporting: false,
-    state: !value.enabled ? 'disabled' : observed ? 'bound_to_observed_hook' : 'awaiting_probe_hook',
+    state: !value.enabled ? 'disabled' : observed ? 'bound_to_observed_hook' : Date.parse(value.expires_at) <= Date.now() ? 'probe_expired' : 'awaiting_probe_hook',
+    ...(observed ? {} : { diagnostics: {
+      failure_stage: 'no_callback_receipt',
+      possible_causes: ['companion not enabled in this session', 'host does not support this hook type', 'configured MCP server/tool route differs from the companion', 'probe expired or hook payload did not include the probe command'],
+      next_step: 'Verify the host\'s exact configured MCP server and tool route. Use reply_hook_configuration to prepare matching hooks. Run the native probe in the same chat; never call reply_hook from the model.'
+    } }),
     ...(observed ? {} : { probe_token: value.probe_token, probe_expires_at: value.expires_at,
       probe_command: `node -e "console.log('${value.probe_token}')"` }),
     note: 'Hook receipt proves the connector callback ran, not that Claude saw a message. Only acknowledgement or reply proves model receipt. No idle wake, timers, or activity reports.'
@@ -106,6 +111,25 @@ export function disableReplyNotifications(args) {
   const selected = binding(args);
   if (selected.value) atomicJson(selected.file, { ...selected.value, enabled: false });
   return { call_id: selected.call.call_id, enabled: false, activity_reporting: false };
+}
+
+export function replyHookConfiguration(args) {
+  const server = String(args.server || '').trim();
+  const tool = String(args.tool || 'reply_hook').trim();
+  if (!server || server.length > 200 || /[\r\n]/.test(server)) throw new Error('Provide the exact configured MCP server name, not its display label.');
+  if (!tool || tool.length > 200 || /[\r\n]/.test(tool)) throw new Error('Provide the exact tool name.');
+  // Wrapper routes are explicit: remote-devices is not assumed to expose reply_hook.
+  if (tool !== 'reply_hook' && !tool.endsWith('__reply_hook') && (!args.input_template || typeof args.input_template !== 'object' || Array.isArray(args.input_template))) {
+    throw new Error('A wrapper tool needs its verified input_template; renaming the server alone cannot configure it.');
+  }
+  const hooks = Object.fromEntries([...events].map(event => {
+    const input = args.input_template ?? { hook_event_name: '${hook_event_name}', session_id: '${session_id}',
+      ...(event === 'UserPromptSubmit' ? {} : {tool_name:'${tool_name}', tool_input:'${tool_input}'}) };
+    return [event, [{hooks:[{type:'mcp_tool', server, tool, timeout:3, input}]}]];
+  }));
+  return { hooks_config: {description:'Reply-only hooks. Silent unless a selected call has pending peer messages.',hooks},
+    installed: false, transport_verified: false,
+    note: 'Install this configuration through the supported companion plugin interface, then run its native probe. A configured route is not proof the host supports the hook. Plugin-bundled servers may require a plugin:<plugin-name>:<server-name> scoped key. No idle wake or activity reporting.' };
 }
 
 export function replyHook(args) {
@@ -157,6 +181,8 @@ export function replyHook(args) {
 
 const select = { call_id: { type: 'string' }, project_path: { type: 'string' } };
 export const replyNotificationTools = [
+  { name: 'reply_hook_configuration', description: 'Prepare reply-only hooks for an explicitly supplied configured MCP server name. For proxy/wrapper tools supply the verified tool and input_template. Does not install or prove delivery.',
+    inputSchema: {type:'object',properties:{server:{type:'string'},tool:{type:'string'},input_template:{type:'object'}},required:['server']} },
   { name: 'prepare_reply_notifications', description: 'Enable reply-only hooks for this explicitly selected open Desktop call. Run the returned harmless probe_command in THIS chat, then check reply_notification_status. No activity reports or idle wake. Existing activity owner must match.',
     inputSchema: { type: 'object', properties: { ...select, activity_session_id: { type: 'string' }, retry_probe: { type: 'boolean', description: 'Explicitly renew an expired, still-unbound setup probe for this same call.' } }, required: ['call_id'] } },
   { name: 'reply_notification_status', description: 'Check whether the direct reply hook for the selected call actually reached the connector. Missing receipt means alerts are unverified; do not simulate it with a model tool call.',

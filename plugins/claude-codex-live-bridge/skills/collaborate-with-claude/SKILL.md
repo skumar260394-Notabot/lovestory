@@ -53,7 +53,7 @@ deliberately; the chosen Codex chat determines the bridge's project store. An
 optional `project_path` filters or verifies it. Codex and Claude must never
 infer the target from the Claude chat title or silently choose the newest chat.
 Ordinary Desktop Chat checks replies with `read_codex_messages` and a call ID.
-The reply-only companion 0.3.0-beta.5 can check selected calls directly only where
+The reply-only companion 0.3.0-beta.6 can check selected calls directly only where
 the host supports its MCP tool hook. It outputs no empty-inbox reminders.
 Direct transport must be demonstrated by a native probe and real message test. Neither route wakes a fully idle chat. `codex queue` targets an existing
 Codex chat and never creates a new one.
@@ -73,10 +73,10 @@ recorded events are visible. A quiet feed or last_status never proves Claude is
 idle or still working. Report useful actions, results and blockers, not hidden
 reasoning. Activity publishing requires an explicit user request.
 
-### Reply-only alerts in companion 0.3.0-beta.5
+### Reply-only alerts in companion 0.3.0-beta.6
 
 Activity reporting and per-step inbox polling reminders are removed. The
-matching Desktop extension 0.3.0-beta.5 adds reply_hook, prepare_reply_notifications,
+matching Desktop extension 0.3.0-beta.6 adds reply_hook, prepare_reply_notifications,
 reply_notification_status and disable_reply_notifications. The public companion has identity claude-codex-live-bridge-alerts and display name claude-codex-live-bridge Alerts. Direct MCP hooks at UserPromptSubmit, PostToolUse and
 PostToolUseFailure return peer context only when a selected call has pending
 Codex messages. Empty results contain no text. There are no Stop hooks, timers,
@@ -187,3 +187,21 @@ with Claude rather than deferring.
 The bridge does not stop or deny Claude's tools. It never approves Claude permissions. A raised hand asks Claude to notice and discuss a concern, and Claude may choose how to respond. If the user wants a hard stop, ask them to use Claude's own session controls; this plugin intentionally does not provide one.
 
 Local hook data is stored under the current user's `.codex-claude-live` directory. Tool arguments and final messages may contain sensitive project material. Keep them in the local tool output, and do not copy them to a remote service without the user's authorization. `disconnect_project` removes only hooks installed by this plugin.
+
+
+## Follow-up setup and route diagnostics
+
+When `.mcp.json` is tracked, use connect_project with channel_config="private"
+and the returned launch command. Shared files stay unchanged. Non-Git folders
+can connect without Git; repositories still require it.
+
+Activity lookup lists only locally registered feeds, not all Claude chats or
+their histories. An unregistered cloud review cannot be read by title through
+this connector. It must connect/register/send findings explicitly.
+
+Alert hooks use the host's exact configured server/tool route. Device-linked
+tasks may use remote-devices and a namespaced reply_hook alias. Obtain these
+from the actual tool list, use reply_hook_configuration or build-alert-route.py,
+then install the matching companion and run its native probe. No model-authored
+fake hook receipts, timers or activity reminders. Routing repair does not prove
+host support. Hooks-only sending skips Codex queue and cannot wake an idle chat.

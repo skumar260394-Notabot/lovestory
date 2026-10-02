@@ -1,6 +1,6 @@
 // Exercise upgrades through the actual MCP server, without either model or live inbox.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
@@ -46,7 +46,7 @@ createInterface({ input: child.stdout }).on('line', line => {
   pending.get(msg.id)?.(msg);
   pending.delete(msg.id);
 });
-async function call(name) {
+async function call(name, args = {}) {
   const id = ++counter;
   let timer;
   const response = new Promise((done, reject) => {
@@ -54,7 +54,7 @@ async function call(name) {
     pending.set(id, done);
   });
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
-    params: { name, arguments: { project_path: project } } }) + '\n');
+    params: { name, arguments: { project_path: project, ...args } } }) + '\n');
   try {
     const msg = await response;
     if (msg.error) throw new Error(msg.error.message);
@@ -134,7 +134,22 @@ try {
   console.log('  ok  wrong root repairs safely; foreign server collisions remain untouched');
 
   assert.equal(stderr, '');
-  console.log('Setup upgrade regression suite passed (6 checks).');
+  execFileSync('git',['-C',project,'init','--quiet']);
+  write(mcpPath, originalMcp);
+  execFileSync('git',['-C',project,'add','.mcp.json']);
+  const shared = readFileSync(mcpPath,'utf8');
+  const local = await call('connect_project',{channel_config:'private'});
+  assert.equal(local.connected,true);
+  assert.equal(readFileSync(mcpPath,'utf8'),shared);
+  assert.ok(local.claude_channel.mcp_config_path.startsWith(home));
+  assert.match(local.claude_channel.launch_command,/--mcp-config/);
+  assert.equal((await call('bridge_status')).setup.claude_paths.channel_config,'private');
+  assert.equal((await call('connect_project')).claude_channel.changed,false);
+  await call('disconnect_claude_channel');
+  assert.equal(readFileSync(mcpPath,'utf8'),shared);
+  console.log('  ok  tracked shared MCP config stays unchanged through private setup, reconnect and removal');
+  assert.equal(stderr, '');
+  console.log('Setup upgrade regression suite passed (7 checks).');
 } finally {
   child.stdin.end();
   child.kill();

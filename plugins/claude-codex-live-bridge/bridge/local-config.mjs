@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 function canonicalPath(path) {
@@ -25,7 +25,21 @@ export function protectLocalConfigs(root, paths) {
   let top;
   try { top = canonicalPath(git(['rev-parse', '--show-toplevel'])); }
   catch (error) {
-    if (error.code === 'ENOENT') throw new Error('Git is required to protect generated machine-local configuration. Install Git before connecting a project.');
+    if (error.code === 'ENOENT') {
+      // With no Git executable, allow only a verified non-repository directory.
+      // .git may be a file (worktree/submodule) rather than a directory.
+      let current = canonicalPath(root);
+      for (;;) {
+        if (existsSync(join(current, '.git')) ||
+            (existsSync(join(current, 'HEAD')) && existsSync(join(current, 'objects')))) {
+          throw new Error('Git is required to protect settings in this repository. Install Git before connecting.');
+        }
+        if (dirname(current) === current) break;
+        current = dirname(current);
+      }
+      if (process.env.GIT_DIR || process.env.GIT_WORK_TREE) throw new Error('Git is required when Git environment overrides are set.');
+      return { git_repository: false, ignored_paths: [], git_unavailable: true };
+    }
     if (!String(error.stderr).includes('not a git repository')) throw error;
     return { git_repository: false, ignored_paths: [] };
   }
@@ -36,7 +50,7 @@ export function protectLocalConfigs(root, paths) {
     return name;
   });
   const tracked = entries.filter(name => git(['ls-files', '--', name]).length > 0);
-  if (tracked.length) throw new Error(`Refusing to write machine-local settings into tracked files: ${tracked.join(', ')}. Keep shared configuration portable; use Claude's local MCP scope or move these settings out of version control before connecting.`);
+  if (tracked.length) throw new Error(`Refusing to write machine-local settings into tracked files: ${tracked.join(', ')}. For a tracked .mcp.json, retry connect_project with channel_config="private"; its channel config stays outside the repository. Other tracked settings must be kept out of version control before connecting.`);
   const exclude = resolve(top, git(['rev-parse', '--git-path', 'info/exclude']));
   let current = '';
   try { current = readFileSync(exclude, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }

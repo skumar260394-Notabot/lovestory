@@ -1,4 +1,4 @@
-# Local review resolution — 0.3.0-beta.5
+# Local review resolution — 0.3.0-beta.6
 
 The seven questions from the owner's Claude review were checked against source,
 installed-client help and the vendors' current documentation.
@@ -20,3 +20,23 @@ References: [OpenAI plugin packaging](https://developers.openai.com/plugins/buil
 This local review does not establish cloud connector visibility, automatic
 Codex return delivery, or native Desktop reply-hook support. Those need their
 separate host tests. No live Claude messages were sent for these checks.
+
+## Follow-up review
+
+Claude's Linux re-review confirmed the seven original fixes. New improvements:
+
+- Teams with a tracked `.mcp.json` can select `channel_config: "private"` and
+  use the returned `--mcp-config` launch command. Tracked files remain intact.
+- Non-Git folders work without Git. Repository/worktree markers or Git
+  environment overrides require Git; the guard does not assume safe absence.
+- Privacy checks now cover macOS user directories and the root user's home.
+- The former preview name was removed from runtime matching. Historical
+  changelog/release names remain to document migration; they are not secrets.
+- Linux runs 23 local-review checks; Windows runs 24 because it also executes
+  the returned probe in cmd. The beta.5 counts were 16 and 17 respectively.
+- Reply-only alert configuration now accepts an explicit server/tool route.
+  The owner's device-linked chat exposes `remote-devices` with a namespaced
+  alias, unlike the direct companion's server. A matching route package still
+  needs a native receipt and pending-message acknowledgement test.
+- Claude can select hooks-only delivery to Codex; it does not start a queue
+  wake or claim that the model received the pending message.

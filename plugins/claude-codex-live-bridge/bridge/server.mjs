@@ -39,7 +39,8 @@ function claudeSetup(root) {
     .filter(handler => isOurs(handler, root)).map(handler => ({ event, handler })));
   const missingEvents = events.filter(event => !owned.some(item =>
     item.event === event && scriptExists(item.handler.args[0], root)));
-  const entry = readJson(mcpConfigPath(root), null)?.mcpServers?.[CHANNEL_SERVER_NAME];
+  const configPath = channelConfigPath(root);
+  const entry = readJson(configPath, null)?.mcpServers?.[CHANNEL_SERVER_NAME];
   const channelConfigured = isOurChannelEntry(entry);
   const channelUsable = channelConfigured && entry.command === 'node' &&
     entry.args?.[1] === root && scriptExists(entry.args[0], root);
@@ -53,6 +54,9 @@ function claudeSetup(root) {
     channel_usable: !!channelUsable,
     channel_script: channelConfigured ? entry.args?.[0] ?? null : null,
     channel_script_exists: channelConfigured && scriptExists(entry.args?.[0], root),
+    channel_config_path: configPath,
+    channel_config: configPath === mcpConfigPath(root) ? 'project' : 'private',
+    launch_command: launchCommand(configPath === mcpConfigPath(root) ? null : configPath),
     refresh_needed: owned.some(item => item.handler.args[0] !== hookPath) ||
       (channelConfigured && (entry.args?.[0] !== channelScript || entry.args?.[1] !== root ||
         entry.command !== 'node'))
@@ -68,7 +72,8 @@ function writeSettings(path, value) {
 function connectProject(args) {
   const root = projectRoot(args.project_path);
   const path = settingsPath(root);
-  const localConfig = protectLocalConfigs(root, [path, mcpConfigPath(root)]);
+  const channelPath = channelConfigPath(root, args.channel_config);
+  const localConfig = protectLocalConfigs(root, [path, ...(channelPath === mcpConfigPath(root) ? [channelPath] : [])]);
   const settings = readJson(path, {});
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Claude local settings must be a JSON object');
   if (settings.hooks == null) settings.hooks = {};
@@ -94,14 +99,14 @@ function connectProject(args) {
   mkdirSync(join(projectDir(root), 'sessions'), { recursive: true });
   // Also register the reciprocal channel, so one call connects both directions.
   let channel;
-  try { channel = connectClaudeChannel(root); }
+  try { channel = connectClaudeChannel(root, args.channel_config); }
   catch (error) { channel = { error: error.message }; }
   return { project_path: root, settings_path: path, hooks_added: added, hooks_updated: updated, connected: !channel?.error,
     claude_channel: channel, local_config: localConfig,
     note: 'Visibility begins when Claude Code loads these hooks and emits its next event. An idle session has no event to receive a raised hand until it resumes.',
     channel_note: channel?.error
       ? `Could not register the channel in .mcp.json: ${channel.error}`
-      : `For two-way calling, start Claude Code with: ${launchCommand()} — then approve the development-channel warning and the new MCP server once. Until then only the hook path works, which cannot reach an idle session.` };
+      : `For two-way calling, start Claude Code with: ${channel.launch_command} — then approve the development-channel warning and the new MCP server once. Until then only the hook path works, which cannot reach an idle session.` };
 }
 
 function disconnectProject(args) {
@@ -125,7 +130,7 @@ function disconnectProject(args) {
     if (kept.length) settings.hooks[event] = kept;
     else delete settings.hooks[event];
   }
-  if (removed) writeSettings(path, settings);
+  if (removed) { protectLocalConfigs(root, [path]); writeSettings(path, settings); }
   const channel = disconnectClaudeChannel(root);
   return { project_path: root, hooks_removed: removed, claude_channel: channel,
     note: 'Saved local activity remains under ~/.codex-claude-live.' };
@@ -376,6 +381,12 @@ const CHANNEL_SERVER_NAME = 'claude-live-bridge';
 const channelScript = fileURLToPath(new URL('./claude-channel.mjs', import.meta.url));
 
 function mcpConfigPath(root) { return join(root, '.mcp.json'); }
+function privateChannelPath(root) { return join(projectDir(root), 'claude-mcp.json'); }
+function channelConfigPath(root, selection) {
+  if (selection != null && !['project', 'private'].includes(selection)) throw new Error('channel_config must be project or private.');
+  return selection === 'private' || (selection == null && readJson(privateChannelPath(root), null)?.mcpServers?.[CHANNEL_SERVER_NAME])
+    ? privateChannelPath(root) : mcpConfigPath(root);
+}
 
 /**
  * Register the bridge channel in <project>/.mcp.json so Claude Code can spawn
@@ -383,8 +394,8 @@ function mcpConfigPath(root) { return join(root, '.mcp.json'); }
  * the one-time --dangerously-load-development-channels flag and its consent
  * prompt; nothing here can grant those.
  */
-function connectClaudeChannel(root) {
-  const path = mcpConfigPath(root);
+function connectClaudeChannel(root, selection) {
+  const path = channelConfigPath(root, selection);
   const config = readJson(path, {});
   if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('.mcp.json must be a JSON object');
   if (config.mcpServers == null) config.mcpServers = {};
@@ -393,17 +404,18 @@ function connectClaudeChannel(root) {
   if (existing && !isOurChannelEntry(existing)) {
     throw new Error(`.mcp.json already defines an MCP server named "${CHANNEL_SERVER_NAME}" that does not point at this bridge. Rename or remove it first; refusing to overwrite someone else's server.`);
   }
-  const localConfig = protectLocalConfigs(root, [path]);
+  const localConfig = path === mcpConfigPath(root) ? protectLocalConfigs(root, [path]) : { stored_outside_project: true };
+  const launch = launchCommand(path === mcpConfigPath(root) ? null : path);
   const desired = { command: 'node', args: [channelScript, root] };
   if (existing && existing.command === desired.command &&
       existing.args?.[0] === channelScript && existing.args?.[1] === root) {
-    return { mcp_config_path: path, channel_server: CHANNEL_SERVER_NAME, changed: false, local_config: localConfig, launch_command: launchCommand() };
+    return { mcp_config_path: path, channel_server: CHANNEL_SERVER_NAME, changed: false, local_config: localConfig, launch_command: launch };
   }
   // Ours but stale (moved plugin or different project root): update in place and
   // keep any env or extra keys the user added.
   config.mcpServers[CHANNEL_SERVER_NAME] = { ...(existing ?? {}), ...desired };
   writeSettings(path, config);
-  return { mcp_config_path: path, channel_server: CHANNEL_SERVER_NAME, changed: true, updated_existing: !!existing, local_config: localConfig, launch_command: launchCommand() };
+  return { mcp_config_path: path, channel_server: CHANNEL_SERVER_NAME, changed: true, updated_existing: !!existing, local_config: localConfig, launch_command: launch };
 }
 
 // Ours only if it actually launches this bridge's channel script.
@@ -411,18 +423,20 @@ function isOurChannelEntry(entry) {
   return Array.isArray(entry?.args) && entry.args.some(arg => typeof arg === 'string' && arg.includes('claude-channel.mjs'));
 }
 
-function launchCommand() {
-  return `claude --dangerously-load-development-channels server:${CHANNEL_SERVER_NAME}`;
+function launchCommand(configPath = null) {
+  const quote = value => "'" + value.replace(/'/g, process.platform === 'win32' ? "''" : "'\"'\"'") + "'";
+  return `claude${configPath ? ' --mcp-config ' + quote(configPath) : ''} --dangerously-load-development-channels server:${CHANNEL_SERVER_NAME}`;
 }
 
 function disconnectClaudeChannel(root) {
-  const path = mcpConfigPath(root);
+  const path = channelConfigPath(root);
   const config = readJson(path, null);
   const entry = config?.mcpServers?.[CHANNEL_SERVER_NAME];
   if (!entry) return { mcp_config_path: path, removed: false };
   if (!isOurChannelEntry(entry)) {
     return { mcp_config_path: path, removed: false, kept: `"${CHANNEL_SERVER_NAME}" in .mcp.json does not point at this bridge, so it was left alone.` };
   }
+  if (path === mcpConfigPath(root)) protectLocalConfigs(root, [path]);
   delete config.mcpServers[CHANNEL_SERVER_NAME];
   writeSettings(path, config);
   return { mcp_config_path: path, removed: true };
@@ -455,7 +469,7 @@ function bridgeStatus(args) {
       complete: claudeHooksInstalled && registered && liveChannel && codexHook.observed,
       next_step: !claudeHooksInstalled || !registered || claude.refresh_needed
         ? 'Run connect_project to install or refresh Claude hook and channel paths; then reload the Claude Code session as required.'
-        : !liveChannel ? `Channel registered but not running. Start Claude Code with: ${launchCommand()}`
+        : !liveChannel ? `Channel registered but not running. Start Claude Code with: ${claude.launch_command}`
         : !codexHooksInstalled && !codexHook.observed ? 'Run connect_codex_project, then trust the hooks with /hooks in Codex and restart the session.'
         : !codexHook.observed ? 'Codex hook config exists, but no hook event has been observed. Trust it with /hooks, restart Codex, and let this project emit an event.'
         : null
@@ -569,7 +583,7 @@ function watchCodexSession(args) {
 
 const tools = [
   ...desktopActivityReadTools,
-  { name: 'connect_project', description: 'Install non-blocking Claude Code hooks in local project settings, preserving existing settings.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
+  { name: 'connect_project', description: 'Install non-blocking Claude Code hooks and a channel. Use channel_config=private when the project commits .mcp.json; private channel settings stay outside the repository and require the returned launch command.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, channel_config: { type: 'string', enum: ['project', 'private'] } }, required: ['project_path'] } },
   { name: 'disconnect_project', description: 'Remove only claude-codex-live-bridge hooks from local project settings.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
   { name: 'list_sessions', description: 'List existing Claude Code sessions for this project with a prompt-based name when available, endpoint, and delivery path.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
   { name: 'watch_activity', description: 'Read new Claude Code activity after a cursor, optionally waiting up to 20 seconds.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, session_id: { type: 'string' }, after_cursor: { type: 'integer' }, wait_ms: { type: 'integer' } }, required: ['project_path', 'session_id'] } },
@@ -577,7 +591,7 @@ const tools = [
   { name: 'hand_status', description: 'Check whether a raised hand is queued or has been injected at a Claude hook point.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, session_id: { type: 'string' }, hand_id: { type: 'string' } }, required: ['project_path', 'session_id', 'hand_id'] } },
   { name: 'git_overlap', description: 'Compare local Git worktrees, branches, heads, and currently changed files for overlap.', inputSchema: { type: 'object', properties: { codex_path: { type: 'string' }, claude_path: { type: 'string' } }, required: ['codex_path', 'claude_path'] } },
 
-  { name: 'connect_claude_channel', description: 'Register the bridge channel in <project>/.mcp.json so Claude Code can push-deliver messages to an idle session. Preserves other MCP servers.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
+  { name: 'connect_claude_channel', description: 'Register the bridge channel. channel_config=private stores its MCP config outside the repository; start Claude Code with the returned launch command. Preserves other MCP servers.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, channel_config: { type: 'string', enum: ['project', 'private'] } }, required: ['project_path'] } },
   { name: 'disconnect_claude_channel', description: 'Remove only this bridge\'s channel entry from <project>/.mcp.json.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
   { name: 'connect_codex_project', description: 'Install Codex-side hooks so Claude can observe this Codex session and Claude messages arrive as context. Writes <project>/.codex/hooks.json.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
   { name: 'codex_hook_event', description: 'Internal target for Codex lifecycle hooks. Records activity and returns pending peer context without blocking.', inputSchema: { type: 'object', properties: {
@@ -604,7 +618,7 @@ const tools = [
 const actions = { connect_project: connectProject, disconnect_project: disconnectProject, list_sessions: listSessions,
   list_desktop_sessions: listDesktopActivity, watch_desktop_activity: watchDesktopActivity,
   watch_activity: watchActivity, raise_hand: raiseHand, hand_status: handStatus, git_overlap: gitOverlap,
-  connect_claude_channel: args => connectClaudeChannel(projectRoot(args.project_path)),
+  connect_claude_channel: args => connectClaudeChannel(projectRoot(args.project_path), args.channel_config),
   disconnect_claude_channel: args => disconnectClaudeChannel(projectRoot(args.project_path)),
   connect_codex_project: connectCodexProject, disconnect_codex_project: disconnectCodexProject, codex_hook_event: codexHookEvent,
   bridge_status: bridgeStatus, call_claude: callClaude, reply_to_claude: replyToClaude,
@@ -620,7 +634,7 @@ for await (const line of lines) {
   if (request.id === undefined) continue;
   try {
     let result;
-    if (request.method === 'initialize') result = { protocolVersion: request.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.5' } };
+    if (request.method === 'initialize') result = { protocolVersion: request.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.6' } };
     else if (request.method === 'ping') result = {};
     else if (request.method === 'tools/list') result = { tools };
     else if (request.method === 'tools/call') {
