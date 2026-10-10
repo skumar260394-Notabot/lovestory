@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / 'plugins/claude-codex-live-bridge'
 VERSION = json.loads((PLUGIN / 'plugin.json').read_text(encoding='utf-8'))['version']
 SHARED = ('common.mjs', 'protocol.mjs', 'desktop-activity.mjs', 'codex-cli.mjs', 'codex-sessions.mjs', 'managed-agents.mjs', 'managed-agent-worker.mjs')
+FLEET = PLUGIN / 'skills/delegate-fleet'
 
 
 def sources(folder):
@@ -41,10 +42,19 @@ def build():
     extension['README.md'] = (ROOT / 'docs/INSTALL.md').read_bytes()
     alerts = sources(ROOT / 'claude/alerts')
     alerts['LICENSE'] = (ROOT / 'LICENSE').read_bytes()
+    # One canonical skill; both plugin packages and the Desktop Skills upload
+    # use identical bytes. MCPB resources alone do not register a Claude skill.
+    fleet = sources(FLEET)
+    for name, content in fleet.items():
+        alerts['skills/delegate-fleet/' + name] = content
+        extension['skills/delegate-fleet/' + name] = content
     packages = {
         f'claude-codex-live-bridge-codex-{VERSION}.zip': plugin_files,
         f'claude-codex-live-bridge-desktop-{VERSION}.mcpb': extension,
         f'claude-codex-live-bridge-alerts-{VERSION}.zip': alerts,
+        f'claude-codex-live-bridge-skills-{VERSION}.zip': {
+            'delegate-fleet/' + name: content for name, content in fleet.items()
+        },
     }
     for name, files in packages.items():
         package(output / name, files)

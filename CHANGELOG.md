@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0-beta.8 — 2026-10-10
+
+- Bundle `delegate-fleet` for Codex and Claude, with one canonical source and
+  identical copies in the plugin packages, Desktop resources, and Skills ZIP.
+- Coordinate Haiku/Luna workers with persistent state, task dependencies,
+  exact-session corrections, review gates, and host-aware goal/scheduler guidance.
+- Retain read-only managed bridge workers; provide an editable local CLI fallback
+  without exposing permission bypass through the fleet launcher.
+- Add nine isolated fleet behavior checks and verify skill parity plus creation,
+  reading, and follow-up tools in both freshly extracted MCP packages.
+- Include the latest local managed-session and single-delivery changes; preserve
+  the upstream delegation relays' MIT attribution.
+- Serialize managed workers' native-ID updates with status reads, preventing
+  Windows atomic-rename failures while the lead polls a running session.
+
+
 ## 0.3.0-beta.7 — 2026-10-10 (local candidate)
 
 - Create batches of managed Codex or Claude Code conversations in either direction.

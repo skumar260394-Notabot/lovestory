@@ -1,4 +1,4 @@
-# Release verification — 0.3.0-beta.6
+# Release verification — 0.3.0-beta.8
 
 ## Checked locally on Windows
 
@@ -11,7 +11,12 @@
 - Local review regressions: 24 Windows / 23 Linux checks for numbered database/schema discovery,
   stale chat exclusion, local Git protection, queue capabilities and real
   PowerShell/cmd probe execution. No live Claude model was contacted.
-- Three built archives passed integrity and SHA-256 verification.
+- Four built archives passed integrity and SHA-256 verification.
+- Nine fleet behavior checks use fake Codex/Claude CLIs to exercise launch,
+  exact-session resume, duplicate requests, dependency/capacity limits,
+  review/completion gates, bridge pagination, and uncertain-launch recovery.
+- The bundled skill has identical bytes in all four packages; freshly extracted
+  MCP servers advertise creation, reading, and follow-up tools in both directions.
 - Freshly extracted Codex and Desktop packages initialized and listed tools through real MCP subprocesses. They did not launch or contact real assistant sessions.
 - Shared module bytes in the Desktop archive match the canonical runtime source.
 - Git history starts from the sanitized public source; private development history and runtime state are excluded.
@@ -22,6 +27,7 @@
 - Native Desktop direct MCP hook support, correct connector name, and actual model-visible pending-message acknowledgement.
 - Codex delivery during an active turn without user steering on each supported host version.
 - macOS/Linux client installation; Windows is the preview target.
+- Live Haiku/Luna entitlement, writable model execution, and unattended host scheduling.
 
 Automated simulation and fresh MCP startup do not replace these live checks. This is a prerelease so users can test and report host compatibility.
 

@@ -283,7 +283,7 @@ for await (const line of lines) {
           experimental: { 'claude/channel': {} },
           tools: {}
         },
-        serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.7' },
+        serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.8' },
         instructions: INSTRUCTIONS
       };
       setTimeout(pump, 50);

@@ -1,8 +1,12 @@
-# Claude Codex Live Bridge Alerts 0.3.0-beta.6
+# Claude Codex Live Bridge Alerts 0.3.0-beta.8
+
+This companion also bundles `/delegate-fleet` for Claude Code. Desktop/Cowork
+loads the same skill through the separate matching Skills ZIP; the MCPB and
+alert hooks alone do not enable it. See the repository's `docs/DELEGATE-FLEET.md`.
 
 Public companion identity: claude-codex-live-bridge-alerts. Activity and
 per-step polling reminders are removed. Install the companion ZIP through
-Customize > Plugins, and the matching claude-codex-live-bridge 0.3.0-beta.6 MCPB through
+Customize > Plugins, and the matching claude-codex-live-bridge 0.3.0-beta.8 MCPB through
 Settings > Extensions > Advanced settings > Install Extension.
 
 ## Delivery

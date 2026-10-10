@@ -5,6 +5,11 @@ description: Collaborate with Claude Code in a local project or Claude Desktop t
 
 # Collaborate with Claude
 
+For a user-requested fleet of Haiku/Luna workers with persistent supervision,
+use the sibling [delegate-fleet skill](../delegate-fleet/SKILL.md). Keep ordinary
+peer collaboration here. Managed worker creation in both directions is already
+supported; managed tools remain read-only and are distinct from app chat creation.
+
 ## User-requested managed agent creation
 
 When the user explicitly asks for new independent agent conversations, use

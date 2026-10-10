@@ -2,7 +2,7 @@
 
 A local conversation bridge between Claude and Codex. Choose an existing chat, send a message, raise a concern while your peer works, and follow supported activity feeds.
 
-**Windows preview — 0.3.0-beta.6.** The original local bridge has been exercised by its owner. Automated tests cover message routing, receipts, hook output, limits and isolation. The new silent Claude Desktop alert companion has **not** passed a live Desktop transport test. Read [supported features](docs/SUPPORT.md) before relying on automatic delivery.
+**Windows preview — 0.3.0-beta.8.** The original local bridge has been exercised by its owner. Automated tests cover message routing, receipts, hook output, limits and isolation. The new silent Claude Desktop alert companion has **not** passed a live Desktop transport test. Read [supported features](docs/SUPPORT.md) before relying on automatic delivery.
 
 ## What it does
 
@@ -13,16 +13,17 @@ A local conversation bridge between Claude and Codex. Choose an existing chat, s
 - Offers optional activity feeds and local Git worktree overlap checks.
 - Includes an experimental reply-only Desktop companion: no activity-report reminders and no model context when the inbox is empty, if the host supports its direct MCP hooks.
 
-This release is for **two assistants on the same computer**. A shared Git remote does not transport live messages. The bridge does not start replacement chats, stop either assistant, or approve tools.
+This release connects assistants on the same computer and can create user-requested managed worker sessions in both directions. A shared Git remote does not transport live messages. The bridge does not replace ordinary app chats, stop either assistant, or approve tools.
 
 ## Install
 
 Download the matching files from [Releases](https://github.com/skumar260394-Notabot/claude-codex-live-bridge/releases).
 
-1. **Codex:** add this Git marketplace with `codex plugin marketplace add skumar260394-Notabot/claude-codex-live-bridge --ref v0.3.0-beta.6`. Open the local marketplace in the desktop app's Plugins Directory and install **Claude Codex Live Bridge**. Restart or reload the client as needed.
-2. **Claude Desktop:** Settings → Extensions → Advanced settings → Install Extension → select `claude-codex-live-bridge-desktop-0.3.0-beta.6.mcpb`.
+1. **Codex:** add this Git marketplace with `codex plugin marketplace add skumar260394-Notabot/claude-codex-live-bridge --ref v0.3.0-beta.8`. Open the local marketplace in the desktop app's Plugins Directory and install **Claude Codex Live Bridge**. Restart or reload the client as needed.
+2. **Claude Desktop:** Settings → Extensions → Advanced settings → Install Extension → select `claude-codex-live-bridge-desktop-0.3.0-beta.8.mcpb`.
 3. **Claude Code:** ask Codex to connect the intended local project using the bridge tools. See [installation and removal](docs/INSTALL.md).
-4. **Optional Desktop alerts:** install `claude-codex-live-bridge-alerts-0.3.0-beta.6.zip` through Claude's plugin upload interface. This feature needs a native probe and real pending-message test; uploading the ZIP alone does not establish support.
+4. **Optional Desktop alerts:** install `claude-codex-live-bridge-alerts-0.3.0-beta.8.zip` through Claude's plugin upload interface. This feature needs a native probe and real pending-message test; uploading the ZIP alone does not establish support.
+5. **Claude delegation skill:** the companion plugin includes `/delegate-fleet` for Claude Code. For Desktop/Cowork, upload `claude-codex-live-bridge-skills-0.3.0-beta.8.zip` through **Customize → Skills** and enable it. The Codex plugin includes `$delegate-fleet` automatically. Installing the MCPB alone does not register a skill.
 
 Requirements: Windows, Node.js 22.13.0 or newer on PATH, the relevant signed-in Claude/Codex clients, and Git for project setup and overlap checks. No npm runtime dependencies, separate API keys or hosted relay are required. Normal model usage and account limits still apply.
 
@@ -31,6 +32,22 @@ Claude can launch multiple independent Codex CLI conversations, and Codex can
 launch multiple Claude Code conversations, each with a title, prompt, optional
 project and model. They require the respective CLI login and use read-only
 tools initially. They are separate from ordinary app chats and cloud sessions.
+
+## Delegate a fleet
+
+Choose an Opus or Sol lead, then ask it to use `delegate-fleet` to create and
+control Haiku/Luna workers for a task with explicit acceptance checks. The lead
+queues work within available capacity, saves exact session IDs, reviews results,
+and sends corrections to the same sessions until the combined checks pass.
+It uses an available goal or an authorized monitor for continued supervision.
+Neither the skill nor the bridge supplies idle Desktop wake or cloud access to
+local workers by itself.
+
+Managed bridge workers currently remain read-only. The bundled CLI adapter can
+launch editable workers when local shell access, Python 3.10+, Node, and the
+respective signed-in CLIs are available. Its native Windows Claude profile
+permits PowerShell and is not OS-isolated. Normal host permissions and account
+limits apply. See [fleet usage and installation](docs/DELEGATE-FLEET.md).
 
 ## First conversation
 
@@ -64,6 +81,6 @@ node scripts/test.mjs
 python scripts/build.py
 ```
 
-Builds produce a Codex ZIP, Claude MCPB, optional alerts ZIP and SHA-256 checksums in `dist/`. Shared modules have one canonical source in `plugins/claude-codex-live-bridge/bridge/`; the builder embeds them in the Desktop package. [Contributing](CONTRIBUTING.md) and [release notes](CHANGELOG.md) explain the layout.
+Builds produce a Codex ZIP, Claude MCPB, companion plugin ZIP, Desktop Skills ZIP and SHA-256 checksums in `dist/`. Shared modules and the delegation skill have canonical sources in `plugins/claude-codex-live-bridge/`; the builder embeds the same skill bytes in each package. [Contributing](CONTRIBUTING.md) and [release notes](CHANGELOG.md) explain the layout.
 
 MIT licensed. Independent project; not affiliated with or endorsed by Anthropic or OpenAI. GitHub distribution does not imply listing or approval in either vendor's public directory.

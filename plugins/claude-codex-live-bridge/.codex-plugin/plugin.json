@@ -2,7 +2,7 @@
   "interface": {
     "displayName": "Claude Codex Live Bridge",
     "shortDescription": "Claude and Codex collaboration",
-    "longDescription": "Local messages, named existing sessions, Claude Code raised hands and optional activity feeds. Desktop reply-only hook alerts are experimental and require a live transport probe.",
+    "longDescription": "Local Claude/Codex messages, named sessions, managed worker creation in both directions, and Delegate Fleet for supervised Haiku/Luna tasks. Desktop reply-only alerts remain experimental and need a native probe.",
     "developerName": "skumar260394-Notabot",
     "category": "Productivity",
     "capabilities": [
@@ -11,11 +11,12 @@
     "defaultPrompt": [
       "Connect to Claude Code in this project and show what Claude is doing.",
       "Raise a hand with Claude about a concern in our shared work.",
-      "Check whether Claude and I are changing the same Git files."
+      "Check whether Claude and I are changing the same Git files.",
+      "Use delegate-fleet to create Haiku and Luna workers for my task and monitor their reviewed results until the acceptance checks pass."
     ]
   },
   "name": "claude-codex-live-bridge",
-  "version": "0.3.0-beta.7",
+  "version": "0.3.0-beta.8",
   "description": "Collaborate with Claude Code or Claude Desktop through local Codex chats, with raised hands and linked two-way calls.",
   "author": {
     "name": "skumar260394-Notabot"

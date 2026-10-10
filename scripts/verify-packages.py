@@ -24,6 +24,14 @@ with tempfile.TemporaryDirectory(prefix='claude-codex-live-bridge-package-') as 
             assert archive.testzip() is None
             assert not any(n.startswith('/') or '..' in n.split('/') for n in archive.namelist())
             archive.extractall(destination)
+        skill_prefix = 'delegate-fleet' if '-skills-' in name else 'skills/delegate-fleet'
+        skill_source = ROOT/'plugins/claude-codex-live-bridge/skills/delegate-fleet'
+        for source in skill_source.rglob('*'):
+            if source.is_file() and '__pycache__' not in source.parts and source.suffix != '.pyc':
+                assert (destination/skill_prefix/source.relative_to(skill_source)).read_bytes() == source.read_bytes()
+        if '-skills-' in name:
+            assert (destination/'delegate-fleet/SKILL.md').is_file()
+            continue
         if 'alerts' in name:
             assert (destination/'.claude-plugin/plugin.json').is_file()
             continue
@@ -35,6 +43,10 @@ with tempfile.TemporaryDirectory(prefix='claude-codex-live-bridge-package-') as 
         messages = {m['id']:m for m in map(json.loads,run.stdout.strip().splitlines()) if 'id' in m}
         assert messages[1].get('result'), run.stdout
         assert len(messages[2]['result']['tools']) > 10
+        tools = {tool['name'] for tool in messages[2]['result']['tools']}
+        provider = 'codex' if name.endswith('.mcpb') else 'claude'
+        assert f'create_{provider}_sessions' in tools
+        assert {'list_agent_sessions', 'read_agent_session', 'send_agent_message'} <= tools
         if name.endswith('.mcpb'):
             for module in ('common.mjs','protocol.mjs','desktop-activity.mjs','codex-cli.mjs','codex-sessions.mjs','managed-agents.mjs','managed-agent-worker.mjs'):
                 assert (destination/'server'/module).read_bytes() == (ROOT/'plugins/claude-codex-live-bridge/bridge'/module).read_bytes()

@@ -13,6 +13,8 @@
 | Desktop activity | Explicit reports or supported direct activity hooks; never inferred from a quiet feed. Reporting can use model tokens. |
 | Cross-project chats | Deliberate existing Codex endpoint selection; choosing a target does not authorize edits there. |
 | Cross-machine/cloud relay | Not supported; Git does not carry live messages. |
+| Managed sessions in both directions | Creates user-requested local Codex/Claude CLI sessions; read-only, with exact-session follow-ups and isolated automated checks. |
+| Delegate Fleet skill | Bundled for Codex and Claude; CLI behavior/package checks pass. Editable workers need the local adapter. Live models/schedulers remain host-dependent. |
 | OS coverage | Windows installation target. Protocol tests can run on other OSes; this does not establish macOS/Linux app integration. |
 
 Receipt meanings: `queued` means accepted into local transport, `delivered_at` means a hook/channel claim or peer acknowledgement/reply, and `acked_at` means explicit acknowledgement. A hook probe receipt proves callback execution, not model receipt of a later message.

@@ -33,4 +33,14 @@ for (const script of scripts) {
     process.exit(1);
   }
 }
+const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const fleet = spawnSync(python, ['-X', 'utf8', join(root, 'tests/delegate-fleet.py')], {
+  cwd: root, env, encoding: 'utf8', timeout: 120000,
+});
+process.stdout.write(fleet.stdout || '');
+process.stderr.write(fleet.stderr || '');
+if (fleet.error || fleet.status !== 0) {
+  process.stderr.write(`Delegate fleet checks failed: ${fleet.error?.message || fleet.status}\n`);
+  process.exit(1);
+}
 console.log('All isolated suites passed. Live app delivery requires a separate host test.');

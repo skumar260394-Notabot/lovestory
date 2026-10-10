@@ -1,5 +1,9 @@
 # Managed Codex and Claude sessions
 
+For a lead that decomposes tasks, controls these exact sessions, reviews results,
+and arranges continued monitoring, use the bundled [Delegate Fleet skill](DELEGATE-FLEET.md).
+Session creation tools and writable local-CLI fallback are separate capabilities.
+
 The bridge can launch independent, persistent **local CLI conversations** in
 both directions. Claude calls `create_codex_sessions`; Codex calls
 `create_claude_sessions`. These are managed agents, not creators for ordinary

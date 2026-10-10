@@ -20,7 +20,10 @@ try {
   function native(value) {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new Error('CLI returned an invalid conversation ID.');
     if (s.native_session_id && s.native_session_id !== value) throw new Error('CLI resumed a different conversation.');
-    s.native_session_id = value; writeAgent(s);
+    s.native_session_id = value;
+    // Registry readers hold this same lock. On Windows an overlapping open
+    // can prevent the atomic rename and otherwise fail a healthy model turn.
+    withAgentLock(() => writeAgent(s));
   }
   const lines = createInterface({ input: child.stdout, crlfDelay:Infinity });
   lines.on('line', line => {
@@ -62,8 +65,10 @@ try {
   s.error = s.state === 'completed' ? null : String(timedOut ? 'Agent turn timed out; no automatic retry.' : resultError || exit.error || stderr || `CLI exited without a successful final result (${exit.code ?? exit.signal}).`).slice(0,2000);
   s.last_response = response; s.response_truncated = responseTruncated; s.updated_at = new Date().toISOString();
   delete s.pending_prompt; delete s.prompt;
-  withAgentLock(() => writeAgent(s));
-  agentEvent(s,{event:'turn_finished',state:s.state,error:s.error,permission_denials:s.permission_denials});
+  withAgentLock(() => {
+    writeAgent(s);
+    agentEvent(s,{event:'turn_finished',state:s.state,error:s.error,permission_denials:s.permission_denials});
+  });
 } catch (error) {
   if (child) child.kill();
   if (s) withAgentLock(() => { s.state = 'failed'; s.error = error.message; delete s.pending_prompt; delete s.prompt; writeAgent(s); });

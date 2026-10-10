@@ -74,7 +74,7 @@ m.sendAgent('claude',{managed_session_id:cb.sessions[0].managed_session_id,reque
 check((await done('claude',cb.sessions[0].managed_session_id)).session.native_session_id===claudeDone.session.native_session_id,'exact Claude resume');
 const failures=m.createAgents('claude',{request_id:'bad-model-test',sessions:[{title:'bad-model',prompt:'hello',model:'bad-model'}]});
 const failure=await done('claude',failures.sessions[0].managed_session_id);
-check(failure.session.state==='failed' && failure.session.error==='unknown model','CLI exit zero with error result fails honestly');
+check(failure.session.state==='failed' && failure.session.error==='unknown model','CLI exit zero with error result fails honestly: '+JSON.stringify(failure.session));
 check(m.listAgents('codex',{query:'first'}).sessions.length===1,'name lookup');
 assert.throws(()=>m.readAgent('../escape'),/Choose/);checks++;
 assert.throws(()=>m.createAgents('codex',{request_id:'invalid',sessions:[{title:'bad',prompt:'hello',project_path:'relative'}]}),/absolute/);checks++;

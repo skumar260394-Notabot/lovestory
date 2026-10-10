@@ -1,0 +1,4 @@
+interface:
+  display_name: "Delegate Fleet"
+  short_description: "Lead Haiku and Luna workers through task completion"
+  default_prompt: "Use $delegate-fleet to delegate this task to Haiku and Luna workers and monitor them until the acceptance checks pass."
