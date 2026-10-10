@@ -26,6 +26,12 @@ Download the matching files from [Releases](https://github.com/skumar260394-Nota
 
 Requirements: Windows, Node.js 22.13.0 or newer on PATH, the relevant signed-in Claude/Codex clients, and Git for project setup and overlap checks. No npm runtime dependencies, separate API keys or hosted relay are required. Normal model usage and account limits still apply.
 
+The bridge also supports [managed agent creation](docs/MANAGED-AGENTS.md):
+Claude can launch multiple independent Codex CLI conversations, and Codex can
+launch multiple Claude Code conversations, each with a title, prompt, optional
+project and model. They require the respective CLI login and use read-only
+tools initially. They are separate from ordinary app chats and cloud sessions.
+
 ## First conversation
 
 In Claude, ask: “Use claude-codex-live-bridge to list Codex sessions and find the exact chat named `<your chat title>`. Show the match before opening a greeting-only call. Do not change files.”

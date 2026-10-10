@@ -125,7 +125,8 @@ try {
 
   const toolNames = (await channel.request('tools/list')).result.tools.map(t => t.name);
   assert.deepEqual(toolNames.sort(), ['ack_call', 'bridge_status', 'call_codex', 'call_status', 'calls',
-    'close_call', 'codex_activity', 'codex_sessions', 'reply_to_codex'].sort());
+    'close_call', 'codex_activity', 'codex_sessions', 'reply_to_codex',
+    'create_codex_sessions', 'list_agent_sessions', 'read_agent_session', 'send_agent_message'].sort());
   ok('channel exposes the reply and observation tools');
 
   // --- 2. Codex hooks make Codex observable --------------------------------

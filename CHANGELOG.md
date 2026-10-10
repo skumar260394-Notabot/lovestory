@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0-beta.7 — 2026-10-10 (local candidate)
+
+- Create batches of managed Codex or Claude Code conversations in either direction.
+- Select a model per conversation and optional explicit project; no project defaults to a neutral workspace.
+- Preserve native conversation IDs for follow-ups, without silently choosing another chat.
+- Idempotent request IDs prevent repeated creation and duplicate follow-up turns.
+- Configurable defaults: four simultaneous turns and ten-minute turn timeout.
+- Read-only tools initially; local CLI login required. Ordinary app/cloud chat creation is not provided.
+- Added 39 isolated checks. Real local greeting and saved-context follow-up passed for both CLIs.
+- Existing Desktop alert companion remains unchanged.
+
 ## Unreleased — alert identity and single-path delivery
 
 - Accept opaque native hook session IDs with stable safe binding keys.

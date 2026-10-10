@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline';
+import { agentTools, agentActions } from './managed-agents.mjs';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -582,6 +583,7 @@ function watchCodexSession(args) {
 }
 
 const tools = [
+  ...agentTools('claude'),
   ...desktopActivityReadTools,
   { name: 'connect_project', description: 'Install non-blocking Claude Code hooks and a channel. Use channel_config=private when the project commits .mcp.json; private channel settings stay outside the repository and require the returned launch command.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, channel_config: { type: 'string', enum: ['project', 'private'] } }, required: ['project_path'] } },
   { name: 'disconnect_project', description: 'Remove only claude-codex-live-bridge hooks from local project settings.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' } }, required: ['project_path'] } },
@@ -615,7 +617,7 @@ const tools = [
   { name: 'list_calls', description: 'List calls in this project and who each one is waiting for.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, include_closed: { type: 'boolean' } }, required: ['project_path'] } },
   { name: 'watch_codex_session', description: 'Read recorded activity for a Codex session, the mirror of watch_activity.', inputSchema: { type: 'object', properties: { project_path: { type: 'string' }, codex_endpoint: { type: 'string' }, after_cursor: { type: 'integer' } }, required: ['project_path'] } }
 ];
-const actions = { connect_project: connectProject, disconnect_project: disconnectProject, list_sessions: listSessions,
+const actions = { ...agentActions('claude'), connect_project: connectProject, disconnect_project: disconnectProject, list_sessions: listSessions,
   list_desktop_sessions: listDesktopActivity, watch_desktop_activity: watchDesktopActivity,
   watch_activity: watchActivity, raise_hand: raiseHand, hand_status: handStatus, git_overlap: gitOverlap,
   connect_claude_channel: args => connectClaudeChannel(projectRoot(args.project_path), args.channel_config),
@@ -634,7 +636,7 @@ for await (const line of lines) {
   if (request.id === undefined) continue;
   try {
     let result;
-    if (request.method === 'initialize') result = { protocolVersion: request.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.6' } };
+    if (request.method === 'initialize') result = { protocolVersion: request.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'claude-live-bridge', version: '0.3.0-beta.7' } };
     else if (request.method === 'ping') result = {};
     else if (request.method === 'tools/list') result = { tools };
     else if (request.method === 'tools/call') {
